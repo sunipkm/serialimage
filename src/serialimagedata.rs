@@ -834,27 +834,30 @@ pub enum DynamicSerialImage {
 }
 
 impl DynamicSerialImage {
-    /// Convert into [`SerialImageData<u8>`].
-    pub fn try_into_u8(self) -> Result<SerialImageData<u8>, &'static str> {
+    /// Get the image metadata.
+    pub fn get_metadata(&self) -> &ImageMetaData {
         match self {
-            DynamicSerialImage::U8(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+            DynamicSerialImage::U8(value) => value.get_metadata(),
+            DynamicSerialImage::U16(value) => value.get_metadata(),
+            DynamicSerialImage::F32(value) => value.get_metadata(),
         }
     }
 
-    /// Convert into [`SerialImageData<u16>`].
-    pub fn try_into_u16(self) -> Result<SerialImageData<u16>, &'static str> {
+    /// Get a mutable reference to the image metadata.
+    pub fn get_mut_metadata(&mut self) -> &mut ImageMetaData {
         match self {
-            DynamicSerialImage::U16(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+            DynamicSerialImage::U8(value) => value.get_mut_metadata(),
+            DynamicSerialImage::U16(value) => value.get_mut_metadata(),
+            DynamicSerialImage::F32(value) => value.get_mut_metadata(),
         }
     }
 
-    /// Convert into [`SerialImageData<f32>`].
-    pub fn try_into_f32(self) -> Result<SerialImageData<f32>, &'static str> {
+    /// Update the image metadata.
+    pub fn get_dynamic_image(self) -> DynamicImage {
         match self {
-            DynamicSerialImage::F32(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<f32>"),
+            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
+            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
+            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
         }
     }
 }
