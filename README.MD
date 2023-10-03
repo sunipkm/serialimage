@@ -1,15 +1,16 @@
-# serialimagedata
-A `SerialImageData` object encapsulates the generic image types defined in the [`image`](https://crates.io/crates/image) crate, along with any metadata, in order to obtain a portable, pixel format independent image that is serializable.
+# serialimage
+This crate extends the [`image`](https://crates.io/crates/image) crate with serializable `DynamicImage`s: the `DynamicSerialImage`s. Additionally, it implements an `ImageMetaData` struct to pack additional metadata information.
+Note, however, the metadata information is lost on conversion from `DynamicSerialImage` to `DynamicImage`.
 
 ## Usage
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimageadata = "2.0.0"
+serialimage = "1.0.0"
 ```
 and the following to your source code:
 ```rs
-use serialimageadata::{ImageMetaData, SerialImageData, SerialImagePixel, SerialImageStorageTypes};
+use serialimage::{DynamicSerialImage, ImageMetaData};
 ```
 
 Then, you can create a new image metadata object:
@@ -17,10 +18,16 @@ Then, you can create a new image metadata object:
 let meta = ImageMetaData::new(...);
 ```
 
-Then, a `SerialImageData` structure can be created from a vector buffer. For example, if the buffer `imgdata` has 8-bit RGB values and its width and height are known,
+Then, a `DynamicSerialImage` can be created from a `DynamicImage`. For example, with a `DynamicImage` from a `Luma<u16>` pixel type image buffer,
 ```rs
-let img = SerialImageData::new(meta, imgdata, width, height, SerialImagePixel::U8(3)); // Indicate that the data storage is backed by u8 data, with 3 elements per pixel.
+let img = DynamicImage::from(ImageBuffer::<Luma<u16>, Vec<u16>>::new(10, 10)); // create DynamicImage
+let mut img = DynamicSerialImage::from(img); // create DynamicSerialImage
+img.set_metadata(meta); // set the metadata
+let imgstr = serde_json::to_string(&img).unwrap(); // serialize
+let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap(); // deserialize
+assert_eq!(img, simg);
 ```
+Now `img` can be sent on its merry way with full serialization
 
 ## Traits
-`SerialImageData` implements the `TryFrom` and `TryInto` traits for `DynamicImage`.
+`DynamicSerialImage` and `SerialImageBuffer` implements the `TryFrom` and `TryInto` traits for `image::DynamicImage`.

@@ -1,7 +1,7 @@
-mod serialimagedata;
+mod serialimage;
 
-pub use serialimagedata::{
-    ImageMetaData, SerialImageData, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage
+pub use serialimage::{
+    ImageMetaData, SerialImageBuffer, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage
 };
 
 #[cfg(test)]
@@ -12,7 +12,7 @@ mod tests {
 
     use serde_json::{self};
 
-    use crate::{ImageMetaData, SerialImageData, SerialImagePixel, DynamicSerialImage};
+    use crate::{ImageMetaData, SerialImageBuffer, SerialImagePixel, DynamicSerialImage};
 
     #[test]
     fn test() {
@@ -26,11 +26,17 @@ mod tests {
             100,
             0,
         );
+        test_meta(Some(meta));
+        test_meta(None);
+    }
+
+    fn test_meta(meta: Option<ImageMetaData>) {
+        println!("With metadata: {}", meta.is_some());
         let img = DynamicImage::from(ImageBuffer::<Luma<u16>, Vec<u16>>::new(10, 10));
         let width = img.width();
         let height = img.height();
         let imgdata = img.into_luma16().into_vec();
-        let img = SerialImageData::new(
+        let img = SerialImageBuffer::new(
             meta,
             imgdata,
             width as usize,
@@ -40,12 +46,15 @@ mod tests {
         let img: DynamicSerialImage = img.try_into().unwrap();
         let val = serde_json::to_string(&img).unwrap();
         println!("{}", val);
-        let img: DynamicSerialImage = serde_json::from_str(&val).unwrap();
-        let dimg = DynamicImage::from(&img);
+        let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
+        assert_eq!(img, simg);
+        let dimg = DynamicImage::from(&simg);
         assert_eq!(dimg.width(), width);
-        let img = DynamicImage::from(img);
+        let img = DynamicImage::from(simg);
         assert_eq!(img.width(), width);
-        let img = DynamicSerialImage::from(img);
+        let img = DynamicSerialImage::from(dimg);
         assert_eq!(img.width(), width as usize);
+        println!("xxxxxxxxxxxxxxxxxxxxxx");
+        print!("\n\n\n");
     }
 }

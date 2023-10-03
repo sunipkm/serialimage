@@ -1,14 +1,14 @@
 [package]
-name = "serialimagedata"
-version = "2.0.0"
+name = "serialimage"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
 license = "MIT OR Apache-2.0"
 keywords = ["image", "serialization", "deserialization"]
 readme = "README.MD"
-repository = "https://github.com/sunipkm/serialimagedata"
-homepage = "https://crates.io/crates/serialimagedata"
+repository = "https://github.com/sunipkm/serialimage"
+homepage = "https://crates.io/crates/serialimage"
 description = """
 Serialization for the [image](https://crates.io/crates/image) crate's DynamicImage type, with additional metadata.
 """

@@ -92,15 +92,15 @@ impl TryInto<ColorType> for SerialImagePixel {
 ///
 /// This structure is derived from the [`DynamicImage`] structure and is used to serialize the image data.
 /// This structure implements the [`std::clone::Clone`] trait, as well as the [`std::convert::TryFrom`] and [`std::convert::TryInto`] traits.
-pub struct SerialImageData<T: SerialImageStorageTypes> {
-    meta: ImageMetaData,
+pub struct SerialImageBuffer<T: SerialImageStorageTypes> {
+    meta: Option<ImageMetaData>,
     imgdata: Vec<T>,
     width: usize,
     height: usize,
     pixel: SerialImagePixel,
 }
 
-impl<T: SerialImageStorageTypes> SerialImageData<T> {
+impl<T: SerialImageStorageTypes> SerialImageBuffer<T> {
     /// Create a new serial image data structure.
     ///
     /// # Arguments
@@ -113,7 +113,7 @@ impl<T: SerialImageStorageTypes> SerialImageData<T> {
     /// # Returns
     ///  * `Some(SerialImageData)` - If the image data is valid, i.e. the number of elements in the raw image data vector is equal to the width x height x number of elements per pixel, then the function returns a [`Some`] variant containing the serial image data structure.
     pub fn new(
-        meta: ImageMetaData,
+        meta: Option<ImageMetaData>,
         imgdata: Vec<T>,
         width: usize,
         height: usize,
@@ -137,18 +137,18 @@ impl<T: SerialImageStorageTypes> SerialImageData<T> {
     }
 
     /// Get the image metadata.
-    pub fn get_metadata(&self) -> &ImageMetaData {
-        &self.meta
+    pub fn get_metadata(&self) -> Option<&ImageMetaData> {
+        self.meta.as_ref()
     }
 
     /// Get a mutable reference to the image metadata.
-    pub fn get_mut_metadata(&mut self) -> &mut ImageMetaData {
-        &mut self.meta
+    pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
+        self.meta.as_mut()
     }
 
     /// Update the image metadata.
     pub fn set_metadata(&mut self, meta: ImageMetaData) {
-        self.meta = meta;
+        self.meta = Some(meta);
     }
 
     /// Get the underlying raw image data.
@@ -337,11 +337,10 @@ impl ImageMetaData {
     }
 }
 
-impl TryFrom<DynamicImage> for SerialImageData<u8> {
+impl TryFrom<DynamicImage> for SerialImageBuffer<u8> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageData<u8>, &'static str> {
+    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<u8>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -374,17 +373,16 @@ impl TryFrom<DynamicImage> for SerialImageData<u8> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image L8 image")?,
         )
     }
 }
 
-impl TryFrom<&DynamicImage> for SerialImageData<u8> {
+impl TryFrom<&DynamicImage> for SerialImageBuffer<u8> {
     type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageData<u8>, &'static str> {
+    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<u8>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -411,17 +409,16 @@ impl TryFrom<&DynamicImage> for SerialImageData<u8> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image L8 image")?,
         )
     }
 }
 
-impl TryFrom<DynamicImage> for SerialImageData<u16> {
+impl TryFrom<DynamicImage> for SerialImageBuffer<u16> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageData<u16>, &'static str> {
+    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<u16>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -448,17 +445,16 @@ impl TryFrom<DynamicImage> for SerialImageData<u16> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image L16 image")?,
         )
     }
 }
 
-impl TryFrom<&DynamicImage> for SerialImageData<u16> {
+impl TryFrom<&DynamicImage> for SerialImageBuffer<u16> {
     type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageData<u16>, &'static str> {
+    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<u16>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -485,17 +481,16 @@ impl TryFrom<&DynamicImage> for SerialImageData<u16> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image L16 image")?,
         )
     }
 }
 
-impl TryFrom<DynamicImage> for SerialImageData<f32> {
+impl TryFrom<DynamicImage> for SerialImageBuffer<f32> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageData<f32>, &'static str> {
+    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<f32>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -514,17 +509,16 @@ impl TryFrom<DynamicImage> for SerialImageData<f32> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image F32 image")?,
         )
     }
 }
 
-impl TryFrom<&DynamicImage> for SerialImageData<f32> {
+impl TryFrom<&DynamicImage> for SerialImageBuffer<f32> {
     type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageData<f32>, &'static str> {
+    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<f32>, &'static str> {
         let img = value.clone();
-        let meta = ImageMetaData::default();
         let color = img.color();
         let width = img.width();
         let height = img.height();
@@ -543,15 +537,15 @@ impl TryFrom<&DynamicImage> for SerialImageData<f32> {
             }
         };
         Ok(
-            SerialImageData::new(meta, imgdata, width as usize, height as usize, pixel)
+            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
                 .ok_or("Could not create image F32 image")?,
         )
     }
 }
 
-impl TryFrom<SerialImageData<u8>> for DynamicImage {
+impl TryFrom<SerialImageBuffer<u8>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: SerialImageData<u8>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: SerialImageBuffer<u8>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data().clone();
         let width = value.width();
         let height = value.height();
@@ -586,9 +580,9 @@ impl TryFrom<SerialImageData<u8>> for DynamicImage {
     }
 }
 
-impl TryFrom<&SerialImageData<u8>> for DynamicImage {
+impl TryFrom<&SerialImageBuffer<u8>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: &SerialImageData<u8>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: &SerialImageBuffer<u8>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data().clone();
         let width = value.width();
         let height = value.height();
@@ -623,9 +617,9 @@ impl TryFrom<&SerialImageData<u8>> for DynamicImage {
     }
 }
 
-impl TryFrom<SerialImageData<u16>> for DynamicImage {
+impl TryFrom<SerialImageBuffer<u16>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: SerialImageData<u16>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: SerialImageBuffer<u16>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data();
         let width = value.width();
         let height = value.height();
@@ -683,9 +677,9 @@ impl TryFrom<SerialImageData<u16>> for DynamicImage {
     }
 }
 
-impl TryFrom<&SerialImageData<u16>> for DynamicImage {
+impl TryFrom<&SerialImageBuffer<u16>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: &SerialImageData<u16>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: &SerialImageBuffer<u16>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data().clone();
         let width = value.width();
         let height = value.height();
@@ -743,9 +737,9 @@ impl TryFrom<&SerialImageData<u16>> for DynamicImage {
     }
 }
 
-impl TryFrom<SerialImageData<f32>> for DynamicImage {
+impl TryFrom<SerialImageBuffer<f32>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: SerialImageData<f32>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: SerialImageBuffer<f32>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data();
         let width = value.width();
         let height = value.height();
@@ -781,9 +775,9 @@ impl TryFrom<SerialImageData<f32>> for DynamicImage {
     }
 }
 
-impl TryFrom<&SerialImageData<f32>> for DynamicImage {
+impl TryFrom<&SerialImageBuffer<f32>> for DynamicImage {
     type Error = &'static str;
-    fn try_from(value: &SerialImageData<f32>) -> Result<DynamicImage, &'static str> {
+    fn try_from(value: &SerialImageBuffer<f32>) -> Result<DynamicImage, &'static str> {
         let imgdata = value.get_data().clone();
         let width = value.width();
         let height = value.height();
@@ -842,16 +836,16 @@ impl TryFrom<&SerialImageData<f32>> for DynamicImage {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum DynamicSerialImage {
     /// 8-bit unsigned integer image data.
-    U8(SerialImageData<u8>),
+    U8(SerialImageBuffer<u8>),
     /// 16-bit unsigned integer image data.
-    U16(SerialImageData<u16>),
+    U16(SerialImageBuffer<u16>),
     /// 32-bit floating point image data.
-    F32(SerialImageData<f32>),
+    F32(SerialImageBuffer<f32>),
 }
 
 impl DynamicSerialImage {
     /// Get the image metadata.
-    pub fn get_metadata(&self) -> &ImageMetaData {
+    pub fn get_metadata(&self) -> Option<&ImageMetaData> {
         match self {
             DynamicSerialImage::U8(value) => value.get_metadata(),
             DynamicSerialImage::U16(value) => value.get_metadata(),
@@ -860,7 +854,7 @@ impl DynamicSerialImage {
     }
 
     /// Get a mutable reference to the image metadata.
-    pub fn get_mut_metadata(&mut self) -> &mut ImageMetaData {
+    pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
         match self {
             DynamicSerialImage::U8(value) => value.get_mut_metadata(),
             DynamicSerialImage::U16(value) => value.get_mut_metadata(),
@@ -956,45 +950,45 @@ impl From<&DynamicSerialImage> for DynamicImage {
     }
 }
 
-impl From<SerialImageData<u8>> for DynamicSerialImage {
-    fn from(value: SerialImageData<u8>) -> Self {
+impl From<SerialImageBuffer<u8>> for DynamicSerialImage {
+    fn from(value: SerialImageBuffer<u8>) -> Self {
         DynamicSerialImage::U8(value)
     }
 }
 
-impl From<SerialImageData<u16>> for DynamicSerialImage {
-    fn from(value: SerialImageData<u16>) -> Self {
+impl From<SerialImageBuffer<u16>> for DynamicSerialImage {
+    fn from(value: SerialImageBuffer<u16>) -> Self {
         DynamicSerialImage::U16(value)
     }
 }
 
-impl From<SerialImageData<f32>> for DynamicSerialImage {
-    fn from(value: SerialImageData<f32>) -> Self {
+impl From<SerialImageBuffer<f32>> for DynamicSerialImage {
+    fn from(value: SerialImageBuffer<f32>) -> Self {
         DynamicSerialImage::F32(value)
     }
 }
 
-impl From<&SerialImageData<u8>> for DynamicSerialImage {
-    fn from(value: &SerialImageData<u8>) -> Self {
+impl From<&SerialImageBuffer<u8>> for DynamicSerialImage {
+    fn from(value: &SerialImageBuffer<u8>) -> Self {
         DynamicSerialImage::U8(value.clone())
     }
 }
 
-impl From<&SerialImageData<u16>> for DynamicSerialImage {
-    fn from(value: &SerialImageData<u16>) -> Self {
+impl From<&SerialImageBuffer<u16>> for DynamicSerialImage {
+    fn from(value: &SerialImageBuffer<u16>) -> Self {
         DynamicSerialImage::U16(value.clone())
     }
 }
 
-impl From<&SerialImageData<f32>> for DynamicSerialImage {
-    fn from(value: &SerialImageData<f32>) -> Self {
+impl From<&SerialImageBuffer<f32>> for DynamicSerialImage {
+    fn from(value: &SerialImageBuffer<f32>) -> Self {
         DynamicSerialImage::F32(value.clone())
     }
 }
 
-impl TryInto<SerialImageData<u8>> for DynamicSerialImage {
+impl TryInto<SerialImageBuffer<u8>> for DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<u8>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<u8>, &'static str> {
         match self {
             DynamicSerialImage::U8(value) => Ok(value),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
@@ -1002,9 +996,9 @@ impl TryInto<SerialImageData<u8>> for DynamicSerialImage {
     }
 }
 
-impl TryInto<SerialImageData<u8>> for &DynamicSerialImage {
+impl TryInto<SerialImageBuffer<u8>> for &DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<u8>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<u8>, &'static str> {
         match self {
             DynamicSerialImage::U8(value) => Ok(value.clone()),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
@@ -1012,9 +1006,9 @@ impl TryInto<SerialImageData<u8>> for &DynamicSerialImage {
     }
 }
 
-impl TryInto<SerialImageData<u16>> for DynamicSerialImage {
+impl TryInto<SerialImageBuffer<u16>> for DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<u16>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<u16>, &'static str> {
         match self {
             DynamicSerialImage::U16(value) => Ok(value),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
@@ -1022,9 +1016,9 @@ impl TryInto<SerialImageData<u16>> for DynamicSerialImage {
     }
 }
 
-impl TryInto<SerialImageData<u16>> for &DynamicSerialImage {
+impl TryInto<SerialImageBuffer<u16>> for &DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<u16>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<u16>, &'static str> {
         match self {
             DynamicSerialImage::U16(value) => Ok(value.clone()),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
@@ -1032,9 +1026,9 @@ impl TryInto<SerialImageData<u16>> for &DynamicSerialImage {
     }
 }
 
-impl TryInto<SerialImageData<f32>> for DynamicSerialImage {
+impl TryInto<SerialImageBuffer<f32>> for DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<f32>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<f32>, &'static str> {
         match self {
             DynamicSerialImage::F32(value) => Ok(value),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
@@ -1042,9 +1036,9 @@ impl TryInto<SerialImageData<f32>> for DynamicSerialImage {
     }
 }
 
-impl TryInto<SerialImageData<f32>> for &DynamicSerialImage {
+impl TryInto<SerialImageBuffer<f32>> for &DynamicSerialImage {
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageData<f32>, &'static str> {
+    fn try_into(self) -> Result<SerialImageBuffer<f32>, &'static str> {
         match self {
             DynamicSerialImage::F32(value) => Ok(value.clone()),
             _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
