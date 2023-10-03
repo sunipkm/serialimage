@@ -833,6 +833,32 @@ pub enum DynamicSerialImage {
     F32(SerialImageData<f32>),
 }
 
+impl DynamicSerialImage {
+    /// Convert into [`SerialImageData<u8>`].
+    pub fn try_into_u8(self) -> Result<SerialImageData<u8>, &'static str> {
+        match self {
+            DynamicSerialImage::U8(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+        }
+    }
+
+    /// Convert into [`SerialImageData<u16>`].
+    pub fn try_into_u16(self) -> Result<SerialImageData<u16>, &'static str> {
+        match self {
+            DynamicSerialImage::U16(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+        }
+    }
+
+    /// Convert into [`SerialImageData<f32>`].
+    pub fn try_into_f32(self) -> Result<SerialImageData<f32>, &'static str> {
+        match self {
+            DynamicSerialImage::F32(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<f32>"),
+        }
+    }
+}
+
 impl From<SerialImageData<u8>> for DynamicSerialImage {
     fn from(value: SerialImageData<u8>) -> Self {
         DynamicSerialImage::U8(value)
