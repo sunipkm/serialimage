@@ -1,8 +1,10 @@
 mod serialimage;
 
 pub use serialimage::{
-    ImageMetaData, SerialImageBuffer, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage
+    ImageMetaData, SerialImageBuffer, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage, 
 };
+
+pub use image::DynamicImage;
 
 #[cfg(test)]
 mod tests {
