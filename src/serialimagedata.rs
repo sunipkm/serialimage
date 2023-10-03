@@ -178,7 +178,6 @@ impl<T: SerialImageStorageTypes> SerialImageData<T> {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-#[deny(missing_docs)]
 /// Image metadata structure.
 /// This structure implements the [`std::fmt::Display`] and [`std::clone::Clone`] traits.
 pub struct ImageMetaData {
@@ -823,6 +822,23 @@ impl TryFrom<&SerialImageData<f32>> for DynamicImage {
 /// Dynamic serial image enumeration. This data type encapsulates the specific serial image data types.
 /// 
 /// The enumeration variants are [`DynamicSerialImage::U8`], [`DynamicSerialImage::U16`], [`DynamicSerialImage::F32`].
+/// 
+/// # Traits
+/// [`DynamicSerialImage`] implements the [`std::clone::Clone`], [`std::convert::From`], [`std::convert::TryFrom`], [`std::convert::Into`] and [`std::fmt::Debug`] traits.
+/// 
+/// Specifically, the following conversions are implemented:
+/// 
+/// With [`std::convert::From`]:
+///  * [`DynamicSerialImage`] <-> [`DynamicImage`]
+///  * [`DynamicSerialImage`] <- [`SerialImageData<u8>`]
+///  * [`DynamicSerialImage`] <- [`SerialImageData<u16>`]
+///  * [`DynamicSerialImage`] <- [`SerialImageData<f32>`]
+/// 
+/// With [`std::convert::TryFrom`]:
+///  * [`DynamicImage`] <-> [`SerialImageData<u8>`]
+///  * [`DynamicImage`] <-> [`SerialImageData<u16>`]
+///  * [`DynamicImage`] <-> [`SerialImageData<f32>`]
+///  
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum DynamicSerialImage {
     /// 8-bit unsigned integer image data.
@@ -853,8 +869,86 @@ impl DynamicSerialImage {
     }
 
     /// Update the image metadata.
-    pub fn get_dynamic_image(self) -> DynamicImage {
+    pub fn set_metadata(&mut self, meta: ImageMetaData) {
         match self {
+            DynamicSerialImage::U8(value) => value.set_metadata(meta),
+            DynamicSerialImage::U16(value) => value.set_metadata(meta),
+            DynamicSerialImage::F32(value) => value.set_metadata(meta),
+        }
+    }
+
+    /// Get image width.
+    pub fn width(&self) -> usize {
+        match self {
+            DynamicSerialImage::U8(value) => value.width(),
+            DynamicSerialImage::U16(value) => value.width(),
+            DynamicSerialImage::F32(value) => value.width(),
+        }
+    }
+
+    /// Get image height.
+    pub fn height(&self) -> usize {
+        match self {
+            DynamicSerialImage::U8(value) => value.height(),
+            DynamicSerialImage::U16(value) => value.height(),
+            DynamicSerialImage::F32(value) => value.height(),
+        }
+    }
+}
+
+impl From<DynamicImage> for DynamicSerialImage {
+    fn from(value: DynamicImage) -> DynamicSerialImage {
+        let color = value.color();
+        match color {
+            ColorType::L8 | ColorType::Rgb8 | ColorType::Rgba8 | ColorType::La8 => {
+                DynamicSerialImage::U8(value.try_into().unwrap())
+            }
+            ColorType::L16 | ColorType::Rgb16 | ColorType::Rgba16 | ColorType::La16 => {
+                DynamicSerialImage::U16(value.try_into().unwrap())
+            }
+            ColorType::Rgb32F | ColorType::Rgba32F => {
+                DynamicSerialImage::F32(value.try_into().unwrap())
+            }
+            _ => {
+                panic!("Unsupported image type");
+            }
+        }
+    }
+}
+
+impl From<&DynamicImage> for DynamicSerialImage {
+    fn from(value: &DynamicImage) -> Self {
+        let color = value.color();
+        match color {
+            ColorType::L8 | ColorType::Rgb8 | ColorType::Rgba8 | ColorType::La8 => {
+                DynamicSerialImage::U8(value.try_into().unwrap())
+            }
+            ColorType::L16 | ColorType::Rgb16 | ColorType::Rgba16 | ColorType::La16 => {
+                DynamicSerialImage::U16(value.try_into().unwrap())
+            }
+            ColorType::Rgb32F | ColorType::Rgba32F => {
+                DynamicSerialImage::F32(value.try_into().unwrap())
+            }
+            _ => {
+                panic!("Unsupported image type");
+            }
+        }
+    }
+}
+
+impl From<DynamicSerialImage> for DynamicImage {
+    fn from(value: DynamicSerialImage) -> Self {
+        match value {
+            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
+            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
+            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
+        }
+    }
+}
+
+impl From<&DynamicSerialImage> for DynamicImage {
+    fn from(value: &DynamicSerialImage) -> Self {
+        match value {
             DynamicSerialImage::U8(value) => value.try_into().unwrap(),
             DynamicSerialImage::U16(value) => value.try_into().unwrap(),
             DynamicSerialImage::F32(value) => value.try_into().unwrap(),

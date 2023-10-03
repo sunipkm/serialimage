@@ -40,5 +40,12 @@ mod tests {
         let img: DynamicSerialImage = img.try_into().unwrap();
         let val = serde_json::to_string(&img).unwrap();
         println!("{}", val);
+        let img: DynamicSerialImage = serde_json::from_str(&val).unwrap();
+        let dimg = DynamicImage::from(&img);
+        assert_eq!(dimg.width(), width);
+        let img = DynamicImage::from(img);
+        assert_eq!(img.width(), width);
+        let img = DynamicSerialImage::from(img);
+        assert_eq!(img.width(), width as usize);
     }
 }
