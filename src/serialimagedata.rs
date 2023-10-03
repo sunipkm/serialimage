@@ -819,3 +819,113 @@ impl TryFrom<&SerialImageData<f32>> for DynamicImage {
         Ok(img)
     }
 }
+
+/// Dynamic serial image enumeration. This data type encapsulates the specific serial image data types.
+/// 
+/// The enumeration variants are [`DynamicSerialImage::U8`], [`DynamicSerialImage::U16`], [`DynamicSerialImage::F32`].
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum DynamicSerialImage {
+    /// 8-bit unsigned integer image data.
+    U8(SerialImageData<u8>),
+    /// 16-bit unsigned integer image data.
+    U16(SerialImageData<u16>),
+    /// 32-bit floating point image data.
+    F32(SerialImageData<f32>),
+}
+
+impl From<SerialImageData<u8>> for DynamicSerialImage {
+    fn from(value: SerialImageData<u8>) -> Self {
+        DynamicSerialImage::U8(value)
+    }
+}
+
+impl From<SerialImageData<u16>> for DynamicSerialImage {
+    fn from(value: SerialImageData<u16>) -> Self {
+        DynamicSerialImage::U16(value)
+    }
+}
+
+impl From<SerialImageData<f32>> for DynamicSerialImage {
+    fn from(value: SerialImageData<f32>) -> Self {
+        DynamicSerialImage::F32(value)
+    }
+}
+
+impl From<&SerialImageData<u8>> for DynamicSerialImage {
+    fn from(value: &SerialImageData<u8>) -> Self {
+        DynamicSerialImage::U8(value.clone())
+    }
+}
+
+impl From<&SerialImageData<u16>> for DynamicSerialImage {
+    fn from(value: &SerialImageData<u16>) -> Self {
+        DynamicSerialImage::U16(value.clone())
+    }
+}
+
+impl From<&SerialImageData<f32>> for DynamicSerialImage {
+    fn from(value: &SerialImageData<f32>) -> Self {
+        DynamicSerialImage::F32(value.clone())
+    }
+}
+
+impl TryInto<SerialImageData<u8>> for DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<u8>, &'static str> {
+        match self {
+            DynamicSerialImage::U8(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+        }
+    }
+}
+
+impl TryInto<SerialImageData<u8>> for &DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<u8>, &'static str> {
+        match self {
+            DynamicSerialImage::U8(value) => Ok(value.clone()),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+        }
+    }
+}
+
+impl TryInto<SerialImageData<u16>> for DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<u16>, &'static str> {
+        match self {
+            DynamicSerialImage::U16(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+        }
+    }
+}
+
+impl TryInto<SerialImageData<u16>> for &DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<u16>, &'static str> {
+        match self {
+            DynamicSerialImage::U16(value) => Ok(value.clone()),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+        }
+    }
+}
+
+impl TryInto<SerialImageData<f32>> for DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<f32>, &'static str> {
+        match self {
+            DynamicSerialImage::F32(value) => Ok(value),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+        }
+    }
+}
+
+impl TryInto<SerialImageData<f32>> for &DynamicSerialImage {
+    type Error = &'static str;
+    fn try_into(self) -> Result<SerialImageData<f32>, &'static str> {
+        match self {
+            DynamicSerialImage::F32(value) => Ok(value.clone()),
+            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+        }
+    }
+}
+

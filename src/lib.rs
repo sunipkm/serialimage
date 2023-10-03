@@ -1,7 +1,7 @@
 mod serialimagedata;
 
 pub use serialimagedata::{
-    ImageMetaData, SerialImageData, SerialImagePixel, SerialImageStorageTypes,
+    ImageMetaData, SerialImageData, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage
 };
 
 #[cfg(test)]
@@ -12,7 +12,7 @@ mod tests {
 
     use serde_json::{self};
 
-    use crate::{ImageMetaData, SerialImageData, SerialImagePixel};
+    use crate::{ImageMetaData, SerialImageData, SerialImagePixel, DynamicSerialImage};
 
     #[test]
     fn test() {
@@ -37,6 +37,7 @@ mod tests {
             height as usize,
             SerialImagePixel::U16(1),
         ).unwrap();
+        let img: DynamicSerialImage = img.try_into().unwrap();
         let val = serde_json::to_string(&img).unwrap();
         println!("{}", val);
     }

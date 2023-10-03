@@ -5,7 +5,7 @@ A `SerialImageData` object encapsulates the generic image types defined in the [
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimageadata = "1.0.0"
+serialimageadata = "2.0.0"
 ```
 and the following to your source code:
 ```rs
