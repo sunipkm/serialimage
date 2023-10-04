@@ -888,6 +888,30 @@ impl DynamicSerialImage {
             DynamicSerialImage::F32(value) => value.height(),
         }
     }
+
+    /// Get the underlying SerialImageBuffer<u8> if the image is of type [`DynamicSerialImage::U8`].
+    pub fn as_u8(&self) -> Option<&SerialImageBuffer<u8>> {
+        match self {
+            DynamicSerialImage::U8(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Get the underlying SerialImageBuffer<u16> if the image is of type [`DynamicSerialImage::U16`].
+    pub fn as_u16(&self) -> Option<&SerialImageBuffer<u16>> {
+        match self {
+            DynamicSerialImage::U16(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Get the underlying SerialImageBuffer<f32> if the image is of type [`DynamicSerialImage::F32`].
+    pub fn as_f32(&self) -> Option<&SerialImageBuffer<f32>> {
+        match self {
+            DynamicSerialImage::F32(value) => Some(value),
+            _ => None,
+        }
+    }
 }
 
 impl From<DynamicImage> for DynamicSerialImage {
