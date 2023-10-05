@@ -1,6 +1,21 @@
 #![warn(missing_docs)]
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "fitsio")]
+use fitsio::{
+    errors::Error as FitsError,
+    images::{ImageDescription, ImageType, WriteImage},
+    FitsFile,
+};
+#[cfg(feature = "fitsio")]
+use std::{
+    fs::remove_file,
+    io,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 pub use image::Primitive;
 
@@ -265,6 +280,156 @@ impl<T: Primitive> SerialImageBuffer<T> {
     }
 }
 
+#[cfg(feature = "fitsio")]
+impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
+    /// Save the image data to a FITS file.
+    ///
+    /// # Arguments
+    ///  * `dir_prefix` - The directory where the file will be saved.
+    ///  * `file_prefix` - The prefix of the file name. The file name will be of the form `{file_prefix}_{timestamp}.fits`.
+    ///  * `progname` - The name of the program that generated the image.
+    ///  * `compress` - Whether to compress the FITS file.
+    ///  * `overwrite` - Whether to overwrite the file if it already exists.
+    ///  * `image_type` - The type of the image data (e.g. [`ImageType::UnsignedByte`])
+    ///
+    /// # Errors
+    ///  * [`fitsio::errors::Error`] with the error description.
+    fn savefits_generic(
+        self,
+        dir_prefix: &Path,
+        file_prefix: &str,
+        progname: Option<&str>,
+        compress: bool,
+        overwrite: bool,
+        image_type: ImageType,
+    ) -> Result<PathBuf, FitsError> {
+        if !dir_prefix.exists() {
+            return Err(FitsError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Directory {:?} does not exist", dir_prefix),
+            )));
+        }
+        let meta = self.get_metadata();
+        let meta2 = meta.clone();
+
+        let timestamp;
+        let cameraname;
+        if let Some(meta) = meta {
+            timestamp = meta
+                .timestamp
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_millis();
+            cameraname = meta.camera_name.clone();
+        } else {
+            timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_millis();
+            cameraname = "unknown".to_owned();
+        }
+
+        let file_prefix = if file_prefix.trim().is_empty() {
+            cameraname.clone()
+        } else {
+            file_prefix.to_owned()
+        };
+
+        let fpath = dir_prefix.join(Path::new(&format!(
+            "{}_{}.fits",
+            file_prefix, timestamp as u64
+        )));
+
+        if fpath.exists() {
+            if !overwrite {
+                return Err(FitsError::Io(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("File {:?} already exists", fpath),
+                )));
+            } else {
+                let res = remove_file(fpath.clone());
+                if let Err(msg) = res {
+                    return Err(FitsError::Io(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Could not remove file {:?}: {}", fpath, msg),
+                    )));
+                }
+            }
+        }
+        let width = self.width();
+        let height = self.height();
+        let imgsize = [height as usize, width as usize];
+        let data_type = image_type;
+
+        let img_desc = ImageDescription {
+            data_type,
+            dimensions: &imgsize,
+        };
+
+        let path = Path::new(dir_prefix).join(Path::new(&format!(
+            "{}_{}.fits{}",
+            file_prefix,
+            timestamp as u64,
+            if compress { "[compress]" } else { "" }
+        )));
+
+        let mut fptr = FitsFile::create(path.clone()).open()?;
+
+        let hdu = {
+            {
+                let primary = if self.is_luma() { "LUMINANCE" } else { "RED" };
+                let hdu = fptr.create_image(primary, &img_desc)?;
+                let channels;
+                if self.is_luma() {
+                    hdu.write_image(&mut fptr, self.get_luma().unwrap())?;
+                    hdu.write_key(&mut fptr, "CHANNELS", 1)?;
+                    channels = 1;
+                } else if self.is_rgb() {
+                    hdu.write_image(&mut fptr, self.get_red().unwrap())?;
+                    let ghdu = fptr.create_image("GREEN", &img_desc)?;
+                    ghdu.write_image(&mut fptr, self.get_green().unwrap())?;
+                    let bhdu = fptr.create_image("BLUE", &img_desc)?;
+                    bhdu.write_image(&mut fptr, self.get_blue().unwrap())?;
+                    hdu.write_key(&mut fptr, "CHANNELS", 3)?;
+                    channels = 3;
+                } else {
+                    return Err(FitsError::Message(format!(
+                        "Unsupported image type {:?}",
+                        data_type
+                    )));
+                }
+                if let Some(alpha) = self.get_alpha() {
+                    let ahdu = fptr.create_image("ALPHA", &img_desc)?;
+                    ahdu.write_image(&mut fptr, alpha)?;
+                    hdu.write_key(&mut fptr, "CHANNELS", channels + 1)?;
+                }
+                hdu
+            }
+        };
+
+        hdu.write_key(&mut fptr, "PROGRAM", progname.unwrap_or("unknown"))?;
+        hdu.write_key(&mut fptr, "CAMERA", cameraname.as_str())?;
+        hdu.write_key(&mut fptr, "TIMESTAMP", timestamp as u64)?;
+        if let Some(meta) = meta2 {
+            hdu.write_key(&mut fptr, "CCDTEMP", meta.temperature)?;
+            hdu.write_key(&mut fptr, "EXPOSURE_US", meta.exposure.as_micros() as u64)?;
+            hdu.write_key(&mut fptr, "ORIGIN_X", meta.img_left)?;
+            hdu.write_key(&mut fptr, "ORIGIN_Y", meta.img_top)?;
+            hdu.write_key(&mut fptr, "BINX", meta.bin_x)?;
+            hdu.write_key(&mut fptr, "BINY", meta.bin_y)?;
+            hdu.write_key(&mut fptr, "GAIN", meta.gain)?;
+            hdu.write_key(&mut fptr, "OFFSET", meta.offset)?;
+            hdu.write_key(&mut fptr, "GAIN_MIN", meta.min_gain)?;
+            hdu.write_key(&mut fptr, "GAIN_MAX", meta.max_gain)?;
+            for obj in meta.get_extended_data().iter() {
+                hdu.write_key(&mut fptr, &obj.0, obj.1.as_str())?;
+            }
+        }
+
+        Ok(path)
+    }
+}
+
 impl SerialImageBuffer<u8> {
     /// Create a new serializable image buffer.
     ///
@@ -330,6 +495,93 @@ impl SerialImageBuffer<u8> {
             width,
             height,
         })
+    }
+
+    /// Convert the image to grayscale, while discarding the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma(&self) -> SerialImageBuffer<u16> {
+        let luma;
+        if self.is_luma() {
+            let sluma = self.data.luma.as_ref().unwrap();
+            luma = sluma.iter().map(|x| ((*x as u16) << 8)).collect();
+        } else if self.is_rgb() {
+            let sred = self.data.red.as_ref().unwrap();
+            let sgreen = self.data.green.as_ref().unwrap();
+            let sblue = self.data.blue.as_ref().unwrap();
+            luma = sred
+                .iter()
+                .zip(sgreen.iter())
+                .zip(sblue.iter())
+                .map(|((r, g), b)| {
+                    R_LUT_U16[((*r as u16) << 8) as usize]
+                        + G_LUT_U16[((*g as u16) << 8) as usize]
+                        + B_LUT_U16[((*b as u16) << 8) as usize]
+                })
+                .collect();
+        } else {
+            panic!("Cannot convert image");
+        }
+
+        SerialImageBuffer::<u16>::new(
+            self.meta.clone(),
+            Some(luma),
+            None,
+            None,
+            None,
+            None,
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
+        let img = self.into_luma();
+        let alpha = match self.data.alpha {
+            Some(ref x) => Some(x.iter().map(|x| ((*x as u16) << 8)).collect()),
+            None => None,
+        };
+        SerialImageBuffer::<u16>::new(
+            img.meta,
+            img.data.luma,
+            None,
+            None,
+            None,
+            alpha,
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    #[cfg(feature = "fitsio")]
+    /// Save the image data to a FITS file.
+    ///
+    /// # Arguments
+    ///  * `dir_prefix` - The directory where the file will be saved.
+    ///  * `file_prefix` - The prefix of the file name. The file name will be of the form `{file_prefix}_{timestamp}.fits`.
+    ///  * `progname` - The name of the program that generated the image.
+    ///  * `compress` - Whether to compress the FITS file.
+    ///  * `overwrite` - Whether to overwrite the file if it already exists.
+    ///
+    /// # Errors
+    ///  * [`fitsio::errors::Error`] with the error description.
+    pub fn savefits(
+        self,
+        dir_prefix: &Path,
+        file_prefix: &str,
+        progname: Option<&str>,
+        compress: bool,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError> {
+        self.savefits_generic(
+            dir_prefix,
+            file_prefix,
+            progname,
+            compress,
+            overwrite,
+            ImageType::UnsignedByte,
+        )
     }
 }
 
@@ -399,6 +651,85 @@ impl SerialImageBuffer<u16> {
             height,
         })
     }
+
+    /// Convert the image to grayscale, while discarding the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma(&self) -> SerialImageBuffer<u16> {
+        let luma;
+        if self.is_luma() {
+            luma = self.data.luma.as_ref().unwrap().clone();
+        } else if self.is_rgb() {
+            let sred = self.data.red.as_ref().unwrap();
+            let sgreen = self.data.green.as_ref().unwrap();
+            let sblue = self.data.blue.as_ref().unwrap();
+            luma = sred
+                .iter()
+                .zip(sgreen.iter())
+                .zip(sblue.iter())
+                .map(|((r, g), b)| {
+                    R_LUT_U16[*r as usize] + G_LUT_U16[*g as usize] + B_LUT_U16[*b as usize]
+                })
+                .collect();
+        } else {
+            panic!("Cannot convert image");
+        }
+        SerialImageBuffer::<u16>::new(
+            self.meta.clone(),
+            Some(luma),
+            None,
+            None,
+            None,
+            None,
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
+        let img = self.into_luma();
+        SerialImageBuffer::<u16>::new(
+            img.meta,
+            img.data.luma,
+            None,
+            None,
+            None,
+            self.data.alpha.clone(),
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    #[cfg(feature = "fitsio")]
+    /// Save the image data to a FITS file.
+    ///
+    /// # Arguments
+    ///  * `dir_prefix` - The directory where the file will be saved.
+    ///  * `file_prefix` - The prefix of the file name. The file name will be of the form `{file_prefix}_{timestamp}.fits`.
+    ///  * `progname` - The name of the program that generated the image.
+    ///  * `compress` - Whether to compress the FITS file.
+    ///  * `overwrite` - Whether to overwrite the file if it already exists.
+    ///
+    /// # Errors
+    ///  * [`fitsio::errors::Error`] with the error description.
+    pub fn savefits(
+        self,
+        dir_prefix: &Path,
+        file_prefix: &str,
+        progname: Option<&str>,
+        compress: bool,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError> {
+        self.savefits_generic(
+            dir_prefix,
+            file_prefix,
+            progname,
+            compress,
+            overwrite,
+            ImageType::UnsignedShort,
+        )
+    }
 }
 
 impl SerialImageBuffer<f32> {
@@ -452,6 +783,95 @@ impl SerialImageBuffer<f32> {
             width,
             height,
         })
+    }
+
+    /// Convert the image to grayscale, discarding the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma(&self) -> SerialImageBuffer<u16> {
+        let luma;
+        if self.is_luma() {
+            let sluma = self.data.luma.as_ref().unwrap();
+            luma = sluma
+                .iter()
+                .map(|x| (*x * u16::MAX as f32).round() as u16)
+                .collect();
+        } else if self.is_rgb() {
+            let sred = self.data.red.as_ref().unwrap();
+            let sgreen = self.data.green.as_ref().unwrap();
+            let sblue = self.data.blue.as_ref().unwrap();
+            luma = sred
+                .iter()
+                .zip(sgreen.iter())
+                .zip(sblue.iter())
+                .map(|((r, g), b)| (0.2162 * *r + 0.7152 * *g + 0.0722 * *b).round() as u16)
+                .collect();
+        } else {
+            panic!("Cannot convert image");
+        }
+        SerialImageBuffer::<u16>::new(
+            self.meta.clone(),
+            Some(luma),
+            None,
+            None,
+            None,
+            None,
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
+    pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
+        let img = self.into_luma();
+        let alpha = match self.data.alpha {
+            Some(ref x) => Some(
+                x.iter()
+                    .map(|x| (*x * u16::MAX as f32).round() as u16)
+                    .collect(),
+            ),
+            None => None,
+        };
+        SerialImageBuffer::<u16>::new(
+            img.meta,
+            img.data.luma,
+            None,
+            None,
+            None,
+            alpha,
+            self.width,
+            self.height,
+        )
+        .unwrap()
+    }
+
+    #[cfg(feature = "fitsio")]
+    /// Save the image data to a FITS file.
+    ///
+    /// # Arguments
+    ///  * `dir_prefix` - The directory where the file will be saved.
+    ///  * `file_prefix` - The prefix of the file name. The file name will be of the form `{file_prefix}_{timestamp}.fits`.
+    ///  * `progname` - The name of the program that generated the image.
+    ///  * `compress` - Whether to compress the FITS file.
+    ///  * `overwrite` - Whether to overwrite the file if it already exists.
+    ///
+    /// # Errors
+    ///  * [`fitsio::errors::Error`] with the error description.
+    pub fn savefits(
+        self,
+        dir_prefix: &Path,
+        file_prefix: &str,
+        progname: Option<&str>,
+        compress: bool,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError> {
+        self.savefits_generic(
+            dir_prefix,
+            file_prefix,
+            progname,
+            compress,
+            overwrite,
+            ImageType::Float,
+        )
     }
 }
 
@@ -1486,3 +1906,37 @@ impl From<&ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32> {
         }
     }
 }
+
+fn get_red_lut_16() -> [u16; u16::MAX as usize + 1] {
+    let mut lut = [0u16; u16::MAX as usize + 1];
+    let mut ctr = 0;
+    while ctr < u16::MAX as usize + 1 {
+        lut[ctr] = (ctr as f32 * 0.2126).round() as u16;
+        ctr += 1;
+    }
+    lut
+}
+
+fn get_green_lut_16() -> [u16; u16::MAX as usize + 1] {
+    let mut lut = [0u16; u16::MAX as usize + 1];
+    let mut ctr = 0;
+    while ctr < u16::MAX as usize + 1 {
+        lut[ctr] = (ctr as f32 * 0.7152).round() as u16;
+        ctr += 1;
+    }
+    lut
+}
+
+fn get_blue_lut_16() -> [u16; u16::MAX as usize + 1] {
+    let mut lut = [0u16; u16::MAX as usize + 1];
+    let mut ctr = 0;
+    while ctr < u16::MAX as usize + 1 {
+        lut[ctr] = (ctr as f32 * 0.0722).round() as u16;
+        ctr += 1;
+    }
+    lut
+}
+
+static R_LUT_U16: Lazy<[u16; u16::MAX as usize + 1]> = Lazy::new(get_red_lut_16);
+static G_LUT_U16: Lazy<[u16; u16::MAX as usize + 1]> = Lazy::new(get_green_lut_16);
+static B_LUT_U16: Lazy<[u16; u16::MAX as usize + 1]> = Lazy::new(get_blue_lut_16);

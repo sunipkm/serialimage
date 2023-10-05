@@ -2,6 +2,11 @@
 This crate extends the [`image`](https://crates.io/crates/image) crate with serializable `DynamicImage`s: the `DynamicSerialImage`s. Additionally, it implements an `ImageMetaData` struct to pack additional metadata information.
 Note, however, the metadata information is lost on conversion from `DynamicSerialImage` to `DynamicImage`.
 
+The `DynamicSerialImage` struct stores the image data internally in separate channels without additional overhead. Similar to the `image` crate, the internal image buffer (`SerialImageBuffer` for `serialimage`) supports base data types of `u8`, `u16` and `f32`. `SerialImageBuffer<u8>` and `SerialImageBuffer<u16>` structs support both grayscale and RGB images. The `SerialImageBuffer<f32>` struct only supports RGB images. Alpha channels are supported for all three types.
+
+Conversions between `image` and `serialimage` data types incur memory copy overheads only when the channel count is > 1, i.e. the images are RGB or contain transparency data due to the differences in memory layout.
+
+
 ## Usage
 Add the following to your `Cargo.toml`:
 ```toml
@@ -30,10 +35,10 @@ assert_eq!(img, simg);
 Now `img` can be sent on its merry way with full serialization
 
 ## Traits
-`DynamicSerialImage` and `SerialImageBuffer` implements the `TryFrom` and `TryInto` traits for `image::DynamicImage` and `image::SerialImageBuffer`.
+`DynamicSerialImage` and `SerialImageBuffer` implements the `TryFrom` and `TryInto` traits for `image::DynamicImage` and `image::ImageBuffer`.
 
 ## Optional Features
-Enable the `fitsio` feature to save `DynamicSerialImage` structures as `FITS` images using the `DynamicSerialImage::savefits()` function.
+Additionally, the `Serial` image types optionally support saving as FITS images (method `savefits()`). This feature is not enabled by default, and is available behind the `fitsio` feature flag. This feature flag can be enabled to allow for FITS image storage.
 
 Add the following to your `Cargo.toml` to enable this:
 ```toml
