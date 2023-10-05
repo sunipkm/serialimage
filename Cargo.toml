@@ -16,18 +16,19 @@ exclude = [".github"]
 
 [features]
 default = []
-##! Optional feature: FITS Output 
+#! ## Optional feature: FITS Output 
 
-## The `fitsio` feature enables FITS output support for the [`DynamicSerialImage`] type, and requires the `fitsio` crate. 
+## The `fitsio` feature enables FITS output support for the [`DynamicSerialImage`] and [`SerialImageBuffer`] types, and requires the `fitsio` crate. 
 fitsio = ["dep:fitsio"]
 
 [dependencies]
 image = "0.24.7"
 serde = { version = "1.0.188", features = ["derive"] }
 document-features = { version = "0.2" }
-##! ### Optional dependencies 
 
-### Enable this feature to implement the trait for the types from the `fitsio` crate 
+#! ## Optional dependency: FITS Output
+
+## The `fitsio` crate is required to enable the `fitsio` feature.
 fitsio = { version = "0.21.2", optional = true}
 once_cell = "1.18.0"
 
