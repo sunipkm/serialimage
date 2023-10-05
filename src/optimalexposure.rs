@@ -58,6 +58,9 @@ impl OptimumExposureConfig {
     ///  * `mut img` - The image luminance data as a vector of u16 that is consumed.
     ///  * `exposure` - The exposure duration used to obtain this image luminance data.
     ///  * `bin` - The binning used to obtain this image luminance data.
+    /// 
+    /// # Returns
+    ///  * `Ok((Duration, u16))` - The optimum exposure time and binning.
     ///
     /// # Errors
     ///  - Errors are returned as static string slices.
