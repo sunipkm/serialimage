@@ -1,64 +1,83 @@
+mod dynamicserialimage;
+mod imagemetadata;
 mod serialimage;
 
-pub use serialimage::{
-    ImageMetaData, SerialImageBuffer, SerialImagePixel, SerialImageStorageTypes, DynamicSerialImage, 
-};
+pub use serialimage::SerialImageBuffer;
+
+pub use image::Primitive;
+
+pub use dynamicserialimage::DynamicSerialImage;
+
+pub use imagemetadata::ImageMetaData;
 
 pub use image::DynamicImage;
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
-
     use image::{DynamicImage, ImageBuffer, Luma};
 
     use serde_json::{self};
 
-    use rand::{Rng, thread_rng};
+    use rand::{thread_rng, Rng};
 
-    use crate::{ImageMetaData, SerialImageBuffer, SerialImagePixel, DynamicSerialImage};
+    use crate::{DynamicSerialImage, ImageMetaData, SerialImageBuffer};
 
     #[test]
     fn test() {
-        let meta = ImageMetaData::new(
-            SystemTime::now(),
-            Duration::from_secs(1),
-            -10.0,
-            1,
-            1,
-            "test",
-            100,
-            0,
-        );
-        test_meta(Some(meta));
-        test_meta(None);
+        test_luma_u8();
+        test_rgb_u8();
     }
 
-    fn test_meta(meta: Option<ImageMetaData>) {
-        println!("With metadata: {}", meta.is_some());
-        let img = DynamicImage::from(ImageBuffer::<Luma<u16>, Vec<u16>>::new(10, 10));
-        let width = img.width();
-        let height = img.height();
-        let imgdata = img.into_luma16().into_vec();
-        let img = SerialImageBuffer::new(
-            meta,
-            imgdata,
-            width as usize,
-            height as usize,
-            SerialImagePixel::U16(1),
-        ).unwrap();
-        let img: DynamicSerialImage = img.try_into().unwrap();
+    fn test_luma_u8() {
+        println!("Test Luma u8");
+        // 1. Generate vector of randoms
+        let mut rng = thread_rng();
+        let width = 10;
+        let height = 10;
+        let mut imgdata = Vec::<u8>::with_capacity(width as usize * height as usize);
+        for _ in 0..width * height {
+            imgdata.push(rng.gen_range(0..=255));
+        }
+        let img = SerialImageBuffer::from_vec(width, height, imgdata).unwrap();
+        let img: DynamicSerialImage = img.into();
         let val = serde_json::to_string(&img).unwrap();
         println!("{}", val);
         let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
         assert_eq!(img, simg);
         let dimg = DynamicImage::from(&simg);
-        assert_eq!(dimg.width(), width);
+        assert_eq!(dimg.width(), width as u32);
         let img = DynamicImage::from(simg);
-        assert_eq!(img.width(), width);
+        assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
         assert_eq!(img.width(), width as usize);
         println!("xxxxxxxxxxxxxxxxxxxxxx");
         print!("\n\n\n");
+    }
+
+    fn test_rgb_u8() {
+        println!("Test RGB u8");
+        // 1. Generate vector of randoms
+        let mut rng = thread_rng();
+        let width = 10;
+        let height = 10;
+        let mut imgdata = Vec::<u8>::with_capacity(width as usize * height as usize * 3);
+        for _ in 0..width * height {
+            imgdata.push(rng.gen_range(0..=255));
+            imgdata.push(rng.gen_range(0..=255));
+            imgdata.push(rng.gen_range(0..=255));
+        }
+        let img = SerialImageBuffer::from_vec(width, height, imgdata).unwrap();
+        let img: DynamicSerialImage = img.into();
+        let val = serde_json::to_string(&img).unwrap();
+        println!("{}", val);
+        let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
+        assert_eq!(img, simg);
+        let dimg = DynamicImage::from(&simg);
+        assert_eq!(dimg.width(), width as u32);
+        let img = DynamicImage::from(simg);
+        assert_eq!(img.width(), width as u32);
+        let img = DynamicSerialImage::from(dimg);
+        assert_eq!(img.width(), width as usize);
+        println!("xxxxxxxxxxxxxxxxxxxxxx");
     }
 }

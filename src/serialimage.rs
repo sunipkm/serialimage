@@ -1,1110 +1,1409 @@
-#![deny(missing_docs)]
-use std::{
-    fmt::Display,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::ops::Deref;
 
-use image::{ColorType, DynamicImage, ImageBuffer, Luma};
+use image::{ColorType, DynamicImage, ImageBuffer, Pixel, Luma, Primitive, LumaA, Rgb};
 use serde::{Deserialize, Serialize};
+
+use super::ImageMetaData;
+
 /// Valid types for the serial image data structure: [`u8`], [`u16`], [`f32`].
-pub trait SerialImageStorageTypes {}
 
-impl SerialImageStorageTypes for u8 {}
-impl SerialImageStorageTypes for u16 {}
-impl SerialImageStorageTypes for f32 {}
-
-/// Serial image type enumeration. The enumeration variants are [`SerialImagePixel::U8`], [`SerialImagePixel::U16`], [`SerialImagePixel::F32`].
-/// The variants contain the number of elements per pixel.
-#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum SerialImagePixel {
-    /// Pixel elements are [`u8`].
-    U8(usize),
-    /// Pixel elements are [`u16`].
-    U16(usize),
-    /// Pixel elements are [`f32`].
-    F32(usize),
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+struct SerialImageInternal<T: Primitive> {
+    luma: Option<Vec<T>>,
+    red: Option<Vec<T>>,
+    green: Option<Vec<T>>,
+    blue: Option<Vec<T>>,
+    alpha: Option<Vec<T>>,
+    pixel_elems: u8,
 }
 
-impl TryFrom<ColorType> for SerialImagePixel {
-    type Error = &'static str;
-    fn try_from(value: ColorType) -> Result<SerialImagePixel, &'static str> {
-        match value {
-            ColorType::L8 => Ok(SerialImagePixel::U8(1)),
-            ColorType::L16 => Ok(SerialImagePixel::U16(1)),
-            ColorType::Rgb8 => Ok(SerialImagePixel::U8(3)),
-            ColorType::Rgb16 => Ok(SerialImagePixel::U16(3)),
-            ColorType::Rgba8 => Ok(SerialImagePixel::U8(4)),
-            ColorType::Rgba16 => Ok(SerialImagePixel::U16(4)),
-            ColorType::La8 => Ok(SerialImagePixel::U8(2)),
-            ColorType::La16 => Ok(SerialImagePixel::U16(2)),
-            ColorType::Rgb32F => Ok(SerialImagePixel::F32(3)),
-            ColorType::Rgba32F => Ok(SerialImagePixel::F32(4)),
-            _ => Err("Unsupported image type"),
-        }
-    }
-}
-
-impl TryInto<ColorType> for SerialImagePixel {
-    type Error = &'static str;
-    fn try_into(self) -> Result<ColorType, &'static str> {
-        match self {
-            SerialImagePixel::U8(value) => {
-                if value == 1 {
-                    Ok(ColorType::L8)
-                } else if value == 3 {
-                    Ok(ColorType::Rgb8)
-                } else if value == 4 {
-                    Ok(ColorType::Rgba8)
-                } else if value == 2 {
-                    Ok(ColorType::La8)
-                } else {
-                    Err("Unsupported image type")
-                }
-            }
-            SerialImagePixel::U16(value) => {
-                if value == 1 {
-                    Ok(ColorType::L16)
-                } else if value == 3 {
-                    Ok(ColorType::Rgb16)
-                } else if value == 4 {
-                    Ok(ColorType::Rgba16)
-                } else if value == 2 {
-                    Ok(ColorType::La16)
-                } else {
-                    Err("Unsupported image type")
-                }
-            }
-            SerialImagePixel::F32(value) => {
-                if value == 3 {
-                    Ok(ColorType::Rgb32F)
-                } else if value == 4 {
-                    Ok(ColorType::Rgba32F)
-                } else {
-                    Err("Unsupported image type")
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-/// Serializable Image Data Structure.
-///
-/// This structure is derived from the [`DynamicImage`] structure and is used to serialize the image data.
-/// This structure implements the [`std::clone::Clone`] trait, as well as the [`std::convert::TryFrom`] and [`std::convert::TryInto`] traits.
-pub struct SerialImageBuffer<T: SerialImageStorageTypes> {
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SerialImageBuffer<T: Primitive> {
     meta: Option<ImageMetaData>,
-    imgdata: Vec<T>,
+    data: SerialImageInternal<T>,
     width: usize,
     height: usize,
-    pixel: SerialImagePixel,
 }
 
-impl<T: SerialImageStorageTypes> SerialImageBuffer<T> {
-    /// Create a new serial image data structure.
-    ///
-    /// # Arguments
-    ///  * `meta` - Image metadata.
-    ///  * `imgdata` - Raw image data, which is a vector of [`u8`], [`u16`] or [`f32`] values.
-    ///  * `width` - Width of the image.
-    ///  * `height` - Height of the image.
-    ///  * `pixel` - Pixel type of the image. The pixel type is of [`SerialImagePixel`].
-    ///
-    /// # Returns
-    ///  * `Some(SerialImageData)` - If the image data is valid, i.e. the number of elements in the raw image data vector is equal to the width x height x number of elements per pixel, then the function returns a [`Some`] variant containing the serial image data structure.
-    pub fn new(
-        meta: Option<ImageMetaData>,
-        imgdata: Vec<T>,
-        width: usize,
-        height: usize,
-        pixel: SerialImagePixel,
-    ) -> Option<Self> {
-        let elem = match pixel {
-            SerialImagePixel::U8(value) => value,
-            SerialImagePixel::U16(value) => value,
-            SerialImagePixel::F32(value) => value,
-        };
-        if elem * width * height != imgdata.len() {
-            return None;
+impl<T: Primitive> SerialImageBuffer<T> {
+    pub fn from_vec(width: usize, height: usize, data: Vec<T>) -> Result<Self, &'static str> {
+        let pixel_elems = data.len() / (width * height);
+        if data.len() != width * height * pixel_elems {
+            return Err("Data length must be equal to width * height * pixel elements");
         }
-        Some(Self {
-            meta,
-            imgdata,
+
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems as u8);
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems: pixel_elems as u8,
+            },
             width,
             height,
-            pixel,
         })
     }
 
-    /// Get the image metadata.
+    fn from_vec_unsafe(
+        size: usize,
+        data: Vec<T>,
+        elems: u8,
+    ) -> (
+        Option<Vec<T>>,
+        Option<Vec<T>>,
+        Option<Vec<T>>,
+        Option<Vec<T>>,
+        Option<Vec<T>>,
+    ) {
+        if elems == 1 {
+            return (Some(data), None, None, None, None);
+        } else if elems == 2 {
+            let mut luma = Vec::with_capacity(size);
+            let mut alpha = Vec::with_capacity(size);
+            for i in 0..size {
+                luma.push(data[i * 2]);
+                alpha.push(data[i * 2 + 1]);
+            }
+            return (Some(luma), None, None, None, Some(alpha));
+        } else if elems == 3 {
+            let mut red = Vec::with_capacity(size);
+            let mut green = Vec::with_capacity(size);
+            let mut blue = Vec::with_capacity(size);
+            for i in 0..size {
+                red.push(data[i * 3]);
+                green.push(data[i * 3 + 1]);
+                blue.push(data[i * 3 + 2]);
+            }
+            return (None, Some(red), Some(green), Some(blue), None);
+        } else if elems == 4 {
+            let mut red = Vec::with_capacity(size);
+            let mut green = Vec::with_capacity(size);
+            let mut blue = Vec::with_capacity(size);
+            let mut alpha = Vec::with_capacity(size);
+            for i in 0..size {
+                red.push(data[i * 4]);
+                green.push(data[i * 4 + 1]);
+                blue.push(data[i * 4 + 2]);
+                alpha.push(data[i * 4 + 3]);
+            }
+            return (None, Some(red), Some(green), Some(blue), Some(alpha));
+        } else {
+            panic!("Invalid number of elements");
+        }
+    }
+
     pub fn get_metadata(&self) -> Option<&ImageMetaData> {
         self.meta.as_ref()
     }
 
-    /// Get a mutable reference to the image metadata.
     pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
         self.meta.as_mut()
     }
 
-    /// Update the image metadata.
-    pub fn set_metadata(&mut self, meta: ImageMetaData) {
-        self.meta = Some(meta);
+    pub fn set_metadata(&mut self, meta: Option<ImageMetaData>) {
+        self.meta = meta;
     }
 
-    /// Get the underlying raw image data.
-    pub fn get_data(&self) -> &Vec<T> {
-        &self.imgdata
+    pub fn get_luma(&self) -> Option<&Vec<T>> {
+        self.data.luma.as_ref()
     }
 
-    /// Get a mutable reference to the underlying raw image data.
-    pub fn get_mut_data(&mut self) -> &mut Vec<T> {
-        &mut self.imgdata
+    pub fn get_mut_luma(&mut self) -> Option<&mut Vec<T>> {
+        self.data.luma.as_mut()
     }
 
-    /// Get the width of the image.
+    pub fn get_red(&self) -> Option<&Vec<T>> {
+        self.data.red.as_ref()
+    }
+
+    pub fn get_mut_red(&mut self) -> Option<&mut Vec<T>> {
+        self.data.red.as_mut()
+    }
+
+    pub fn get_green(&self) -> Option<&Vec<T>> {
+        self.data.green.as_ref()
+    }
+
+    pub fn get_mut_green(&mut self) -> Option<&mut Vec<T>> {
+        self.data.green.as_mut()
+    }
+
+    pub fn get_blue(&self) -> Option<&Vec<T>> {
+        self.data.blue.as_ref()
+    }
+
+    pub fn get_mut_blue(&mut self) -> Option<&mut Vec<T>> {
+        self.data.blue.as_mut()
+    }
+
+    pub fn get_alpha(&self) -> Option<&Vec<T>> {
+        self.data.alpha.as_ref()
+    }
+
+    pub fn get_mut_alpha(&mut self) -> Option<&mut Vec<T>> {
+        self.data.alpha.as_mut()
+    }
+
     pub fn width(&self) -> usize {
         self.width
     }
 
-    /// Get the height of the image.
     pub fn height(&self) -> usize {
         self.height
     }
 
-    /// Get the pixel type of the image. The pixel type is of [`SerialImagePixel`].
-    pub fn pixel(&self) -> SerialImagePixel {
-        self.pixel
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-/// Image metadata structure.
-/// This structure implements the [`std::fmt::Display`] and [`std::clone::Clone`] traits.
-pub struct ImageMetaData {
-    /// Binning in X direction
-    pub bin_x: u32,
-    /// Binning in Y direction
-    pub bin_y: u32,
-    /// Top of image (pixels, binned coordinates)
-    pub img_top: u32,
-    /// Left of image (pixels, binned coordinates)
-    pub img_left: u32,
-    /// Camera temperature (C)
-    pub temperature: f32,
-    /// Exposure time
-    pub exposure: Duration,
-    /// Timestamp of the image
-    pub timestamp: SystemTime,
-    /// Name of the camera
-    pub camera_name: String,
-    /// Gain (raw)
-    pub gain: i64,
-    /// Offset (raw)
-    pub offset: i64,
-    /// Minimum gain (raw)
-    pub min_gain: i32,
-    /// Maximum gain (raw)
-    pub max_gain: i32,
-    extended_metadata: Vec<(String, String)>,
-}
-
-impl ImageMetaData {
-    /// Create a new image metadata structure.
-    pub fn new(
-        timestamp: SystemTime,
-        exposure: Duration,
-        temperature: f32,
-        bin_x: u32,
-        bin_y: u32,
-        camera_name: &str,
-        gain: i64,
-        offset: i64,
-    ) -> Self {
-        Self {
-            bin_x,
-            bin_y,
-            img_top: 0,
-            img_left: 0,
-            temperature,
-            exposure,
-            timestamp,
-            camera_name: camera_name.to_string(),
-            gain,
-            offset,
-            ..Default::default()
-        }
+    pub fn pixel_elems(&self) -> u8 {
+        self.data.pixel_elems
     }
 
-    /// Create a new image metadata structure with full parameters.
-    pub fn full_builder(
-        bin_x: u32,
-        bin_y: u32,
-        img_top: u32,
-        img_left: u32,
-        temperature: f32,
-        exposure: Duration,
-        timestamp: SystemTime,
-        camera_name: &str,
-        gain: i64,
-        offset: i64,
-        min_gain: i32,
-        max_gain: i32,
-    ) -> Self {
-        Self {
-            bin_x,
-            bin_y,
-            img_top,
-            img_left,
-            temperature,
-            exposure,
-            timestamp,
-            camera_name: camera_name.to_string(),
-            gain,
-            offset,
-            min_gain,
-            max_gain,
-            ..Default::default()
-        }
+    pub fn is_luma(&self) -> bool {
+        self.data.pixel_elems == 1
     }
-}
 
-impl Default for ImageMetaData {
-    fn default() -> Self {
-        Self {
-            bin_x: 1,
-            bin_y: 1,
-            img_top: 0,
-            img_left: 0,
-            temperature: 0f32,
-            exposure: Duration::from_secs(0),
-            timestamp: UNIX_EPOCH,
-            camera_name: String::new(),
-            gain: 0,
-            offset: 0,
-            min_gain: 0,
-            max_gain: 0,
-            extended_metadata: Vec::new(),
-        }
+    pub fn is_luma_alpha(&self) -> bool {
+        self.data.pixel_elems == 2
     }
-}
 
-impl Display for ImageMetaData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ImageMetaData [{:#?}]:\n
-            \tCamera name: {}\n
-            \tImage Bin: {} x {}\n
-            \tImage Origin: {} x {}
-            \tExposure: {} s\n
-            \tGain: {}, Offset: {}\n
-            \tTemperature: {} C\n",
-            self.timestamp,
-            self.camera_name,
-            self.bin_x,
-            self.bin_y,
-            self.img_left,
-            self.img_top,
-            self.exposure.as_secs(),
-            self.gain,
-            self.offset,
-            self.temperature
-        )?;
-        if self.extended_metadata.len() > 0 {
-            write!(f, "\tExtended Metadata:\n")?;
-            for obj in self.extended_metadata.iter() {
-                write!(f, "\t\t{}: {}\n", obj.0, obj.1)?;
+    pub fn is_rgb(&self) -> bool {
+        self.data.pixel_elems == 3
+    }
+
+    pub fn is_rgba(&self) -> bool {
+        self.data.pixel_elems == 4
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        let mut data =
+            Vec::with_capacity(self.width * self.height * self.data.pixel_elems as usize);
+
+        if self.width * self.height == 0 {
+            return Vec::new();
+        } else if self.data.pixel_elems == 1 {
+            return self.data.luma.unwrap();
+        } else if self.data.pixel_elems == 2 {
+            let luma = self.data.luma.unwrap();
+            let alpha = self.data.alpha.unwrap();
+            for i in 0..self.width * self.height {
+                data.push(luma[i]);
+                data.push(alpha[i]);
             }
-        };
-        Ok(())
+        } else if self.data.pixel_elems == 3 {
+            let red = self.data.red.unwrap();
+            let green = self.data.green.unwrap();
+            let blue = self.data.blue.unwrap();
+            for i in 0..self.width * self.height {
+                data.push(red[i]);
+                data.push(green[i]);
+                data.push(blue[i]);
+            }
+        } else if self.data.pixel_elems == 4 {
+            let red = self.data.red.unwrap();
+            let green = self.data.green.unwrap();
+            let blue = self.data.blue.unwrap();
+            let alpha = self.data.alpha.unwrap();
+            for i in 0..self.width * self.height {
+                data.push(red[i]);
+                data.push(green[i]);
+                data.push(blue[i]);
+                data.push(alpha[i]);
+            }
+        } else {
+            panic!("Invalid number of elements");
+        }
+
+        return data;
     }
 }
 
-impl ImageMetaData {
-    /// Add an extended attribute to the image metadata using `vec::push()`.
-    ///
-    /// # Panics
-    ///
-    /// If the new capacity exceeds `isize::MAX` bytes.
-    pub fn add_extended_attrib(&mut self, key: &str, val: &str) {
-        self.extended_metadata
-            .push((key.to_string(), val.to_string()));
+impl SerialImageBuffer<u8> {
+    pub fn new(
+        meta: Option<ImageMetaData>,
+        luma: Option<Vec<u8>>,
+        red: Option<Vec<u8>>,
+        green: Option<Vec<u8>>,
+        blue: Option<Vec<u8>>,
+        alpha: Option<Vec<u8>>,
+        width: usize,
+        height: usize,
+    ) -> Result<Self, &'static str> {
+        if width * height == 0 {
+            return Err("Width and height must be greater than zero");
+        }
+        let colors = red.is_some() as u8 + green.is_some() as u8 + blue.is_some() as u8;
+        if colors > 0 && colors != 3 {
+            return Err("All color channels must be specified.");
+        }
+        if luma.is_some() && colors > 0 {
+            return Err("Luma and color channels cannot be specified at the same time");
+        }
+        if luma.is_some() && luma.as_ref().unwrap().len() != width * height {
+            return Err("Length of luma channel must be equal to width * height");
+        }
+        if red.is_some() && red.as_ref().unwrap().len() != width * height {
+            return Err("Length of red channel must be equal to width * height");
+        }
+        if green.is_some() && green.as_ref().unwrap().len() != width * height {
+            return Err("Length of green channel must be equal to width * height");
+        }
+        if blue.is_some() && blue.as_ref().unwrap().len() != width * height {
+            return Err("Length of blue channel must be equal to width * height");
+        }
+        if alpha.is_some() && alpha.as_ref().unwrap().len() != width * height {
+            return Err("Length of alpha channel must be equal to width * height");
+        }
+        let pixel_elems = colors + luma.is_some() as u8 + alpha.is_some() as u8;
+        Ok(Self {
+            meta,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        })
     }
+}
 
-    /// Get the extended attributes of the image metadata.
-    pub fn get_extended_data(&self) -> &Vec<(String, String)> {
-        &self.extended_metadata
+impl SerialImageBuffer<u16> {
+    pub fn new(
+        meta: Option<ImageMetaData>,
+        luma: Option<Vec<u16>>,
+        red: Option<Vec<u16>>,
+        green: Option<Vec<u16>>,
+        blue: Option<Vec<u16>>,
+        alpha: Option<Vec<u16>>,
+        width: usize,
+        height: usize,
+    ) -> Result<Self, &'static str> {
+        if width * height == 0 {
+            return Err("Width and height must be greater than zero");
+        }
+        let colors = red.is_some() as u8 + green.is_some() as u8 + blue.is_some() as u8;
+        if colors > 0 && colors != 3 {
+            return Err("All color channels must be specified.");
+        }
+        if luma.is_some() && colors > 0 {
+            return Err("Luma and color channels cannot be specified at the same time");
+        }
+        if luma.is_some() && luma.as_ref().unwrap().len() != width * height {
+            return Err("Length of luma channel must be equal to width * height");
+        }
+        if red.is_some() && red.as_ref().unwrap().len() != width * height {
+            return Err("Length of red channel must be equal to width * height");
+        }
+        if green.is_some() && green.as_ref().unwrap().len() != width * height {
+            return Err("Length of green channel must be equal to width * height");
+        }
+        if blue.is_some() && blue.as_ref().unwrap().len() != width * height {
+            return Err("Length of blue channel must be equal to width * height");
+        }
+        if alpha.is_some() && alpha.as_ref().unwrap().len() != width * height {
+            return Err("Length of alpha channel must be equal to width * height");
+        }
+        let pixel_elems = colors + luma.is_some() as u8 + alpha.is_some() as u8;
+        Ok(Self {
+            meta,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        })
+    }
+}
+
+impl SerialImageBuffer<f32> {
+    pub fn new(
+        meta: Option<ImageMetaData>,
+        red: Vec<f32>,
+        green: Vec<f32>,
+        blue: Vec<f32>,
+        alpha: Option<Vec<f32>>,
+        width: usize,
+        height: usize,
+    ) -> Result<Self, &'static str> {
+        if red.len() != width * height {
+            return Err("Length of red channel must be equal to width * height");
+        }
+        if green.len() != width * height {
+            return Err("Length of green channel must be equal to width * height");
+        }
+        if blue.len() != width * height {
+            return Err("Length of blue channel must be equal to width * height");
+        }
+        if alpha.is_some() && alpha.as_ref().unwrap().len() != width * height {
+            return Err("Length of alpha channel must be equal to width * height");
+        }
+        let elems = if alpha.is_some() { 4 } else { 3 };
+        Ok(Self {
+            meta,
+            data: SerialImageInternal {
+                luma: None,
+                red: Some(red),
+                green: Some(green),
+                blue: Some(blue),
+                alpha,
+                pixel_elems: elems,
+            },
+            width,
+            height,
+        })
     }
 }
 
 impl TryFrom<DynamicImage> for SerialImageBuffer<u8> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<u8>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel: Result<SerialImagePixel, &'static str> = color.try_into();
-        let pixel = match pixel {
-            Ok(p) => p,
-            Err(msg) => {
-                return Err(msg);
-            }
-        };
-        let imgdata = match color {
-            ColorType::L8 => {
-                let img = img.into_luma8();
-                img.into_raw()
-            }
-            ColorType::Rgb8 => {
-                let img = img.into_rgb8();
-                img.into_raw()
-            }
-            ColorType::Rgba8 => {
-                let img = img.into_rgba8();
-                img.into_raw()
-            }
-            ColorType::La8 => {
-                let img = img.into_luma_alpha8();
-                img.into_raw()
-            }
-            _ => {
-                return Err("Unsupported image type");
-            }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image L8 image")?,
-        )
-    }
-}
 
-impl TryFrom<&DynamicImage> for SerialImageBuffer<u8> {
-    type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<u8>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel = color.try_into()?;
-        let imgdata = match color {
-            ColorType::L8 => {
-                let img = img.into_luma8();
-                img.into_raw()
+    fn try_from(image: DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageLuma8(img) => {
+                luma = Some(img.into_raw());
+                red = None;
+                green = None;
+                blue = None;
+                alpha = None;
             }
-            ColorType::Rgb8 => {
-                let img = img.into_rgb8();
-                img.into_raw()
+            DynamicImage::ImageLumaA8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
-            ColorType::Rgba8 => {
-                let img = img.into_rgba8();
-                img.into_raw()
+            DynamicImage::ImageRgb8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
-            ColorType::La8 => {
-                let img = img.into_luma_alpha8();
-                img.into_raw()
+            DynamicImage::ImageRgba8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
             _ => {
-                return Err("Unsupported image type");
+                return Err("Image type not supported");
             }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image L8 image")?,
-        )
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
     }
 }
 
 impl TryFrom<DynamicImage> for SerialImageBuffer<u16> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<u16>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel = color.try_into()?;
-        let imgdata = match color {
-            ColorType::L16 => {
-                let img = img.into_luma16();
-                img.into_raw()
-            }
-            ColorType::Rgb16 => {
-                let img = img.into_rgb16();
-                img.into_raw()
-            }
-            ColorType::Rgba16 => {
-                let img = img.into_rgba16();
-                img.into_raw()
-            }
-            ColorType::La16 => {
-                let img = img.into_luma_alpha16();
-                img.into_raw()
-            }
-            _ => {
-                return Err("Unsupported image type");
-            }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image L16 image")?,
-        )
-    }
-}
 
-impl TryFrom<&DynamicImage> for SerialImageBuffer<u16> {
-    type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<u16>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel = color.try_into()?;
-        let imgdata = match color {
-            ColorType::L16 => {
-                let img = img.into_luma16();
-                img.into_raw()
+    fn try_from(image: DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageLuma16(img) => {
+                luma = Some(img.into_raw());
+                red = None;
+                green = None;
+                blue = None;
+                alpha = None;
             }
-            ColorType::Rgb16 => {
-                let img = img.into_rgb16();
-                img.into_raw()
+            DynamicImage::ImageLumaA16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
-            ColorType::Rgba16 => {
-                let img = img.into_rgba16();
-                img.into_raw()
+            DynamicImage::ImageRgb16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
-            ColorType::La16 => {
-                let img = img.into_luma_alpha16();
-                img.into_raw()
+            DynamicImage::ImageRgba16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
             _ => {
-                return Err("Unsupported image type");
+                return Err("Image type not supported");
             }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image L16 image")?,
-        )
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
     }
 }
 
 impl TryFrom<DynamicImage> for SerialImageBuffer<f32> {
     type Error = &'static str;
-    fn try_from(value: DynamicImage) -> Result<SerialImageBuffer<f32>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel = color.try_into()?;
-        let imgdata = match color {
-            ColorType::Rgb32F => {
-                let img = img.into_rgb32f();
-                img.into_raw()
+
+    fn try_from(image: DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageRgb32F(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
-            ColorType::Rgba32F => {
-                let img = img.into_rgba32f();
-                img.into_raw()
+            DynamicImage::ImageRgba32F(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.into_raw(), pixel_elems)
             }
             _ => {
-                return Err("Unsupported image type");
+                return Err("Image type not supported");
             }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image F32 image")?,
-        )
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
+    }
+}
+
+impl Into<DynamicImage> for SerialImageBuffer<u8> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let mut data = self.into_vec();
+
+        match pixel_elems {
+            1 => {
+                let img = ImageBuffer::<image::Luma<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLuma8(img)
+            }
+            2 => {
+                let mut img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLumaA8(img)
+            }
+            3 => {
+                let mut img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgb8(img)
+            }
+            4 => {
+                let mut img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgba8(img)
+            }
+            _ => panic!("Pixel elements not supported"),
+        }
+    }
+}
+
+impl Into<DynamicImage> for SerialImageBuffer<u16> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let mut data = self.into_vec();
+
+        match pixel_elems {
+            1 => {
+                let img = ImageBuffer::<image::Luma<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLuma16(img)
+            }
+            2 => {
+                let mut img = ImageBuffer::<image::LumaA<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLumaA16(img)
+            }
+            3 => {
+                let mut img = ImageBuffer::<image::Rgb<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgb16(img)
+            }
+            4 => {
+                let mut img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgba16(img)
+            }
+            _ => panic!("Pixel elements not supported"),
+        }
+    }
+}
+
+impl Into<DynamicImage> for SerialImageBuffer<f32> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let mut data = self.into_vec();
+
+        match pixel_elems {
+            3 => {
+                let mut img = ImageBuffer::<image::Rgb<f32>, Vec<f32>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgb32F(img)
+            }
+            4 => {
+                let mut img = ImageBuffer::<image::Rgba<f32>, Vec<f32>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgba32F(img)
+            }
+            _ => panic!("Pixel elements not supported"),
+        }
+    }
+}
+
+impl TryFrom<&DynamicImage> for SerialImageBuffer<u8> {
+    type Error = &'static str;
+
+    fn try_from(image: &DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageLuma8(img) => {
+                luma = Some(img.as_raw().clone());
+                red = None;
+                green = None;
+                blue = None;
+                alpha = None;
+            }
+            DynamicImage::ImageLumaA8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            DynamicImage::ImageRgb8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            DynamicImage::ImageRgba8(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            _ => {
+                return Err("Image type not supported");
+            }
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
+    }
+}
+
+impl TryFrom<&DynamicImage> for SerialImageBuffer<u16> {
+    type Error = &'static str;
+
+    fn try_from(image: &DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageLuma16(img) => {
+                luma = Some(img.as_raw().clone());
+                red = None;
+                green = None;
+                blue = None;
+                alpha = None;
+            }
+            DynamicImage::ImageLumaA16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            DynamicImage::ImageRgb16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            DynamicImage::ImageRgba16(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.as_raw().clone(), pixel_elems);
+            }
+            _ => {
+                return Err("Image type not supported");
+            }
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
     }
 }
 
 impl TryFrom<&DynamicImage> for SerialImageBuffer<f32> {
     type Error = &'static str;
-    fn try_from(value: &DynamicImage) -> Result<SerialImageBuffer<f32>, &'static str> {
-        let img = value.clone();
-        let color = img.color();
-        let width = img.width();
-        let height = img.height();
-        let pixel = color.try_into()?;
-        let imgdata = match color {
-            ColorType::Rgb32F => {
-                let img = img.into_rgb32f();
-                img.into_raw()
+
+    fn try_from(image: &DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let pixel_elems = image.color().channel_count();
+        let luma;
+        let red;
+        let green;
+        let blue;
+        let alpha;
+
+        match image {
+            DynamicImage::ImageRgb32F(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.clone().into_raw(), pixel_elems)
             }
-            ColorType::Rgba32F => {
-                let img = img.into_rgba32f();
-                img.into_raw()
+            DynamicImage::ImageRgba32F(img) => {
+                (luma, red, green, blue, alpha) =
+                    Self::from_vec_unsafe(width * height, img.clone().into_raw(), pixel_elems)
             }
             _ => {
-                return Err("Unsupported image type");
+                return Err("Image type not supported");
             }
-        };
-        Ok(
-            SerialImageBuffer::new(None, imgdata, width as usize, height as usize, pixel)
-                .ok_or("Could not create image F32 image")?,
-        )
+        }
+
+        Ok(Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width: width as usize,
+            height: height as usize,
+        })
     }
 }
 
-impl TryFrom<SerialImageBuffer<u8>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: SerialImageBuffer<u8>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data().clone();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
+impl Into<DynamicImage> for &SerialImageBuffer<u8> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let data = self.clone().into_vec();
 
-        let img = match color {
-            ColorType::L8 => {
-                let img = image::GrayImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image L8 image")?;
+        match pixel_elems {
+            1 => {
+                let img = ImageBuffer::<image::Luma<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
                 DynamicImage::ImageLuma8(img)
             }
-            ColorType::Rgb8 => {
-                let img = image::RgbImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image Rgb8 image")?;
-                DynamicImage::ImageRgb8(img)
-            }
-            ColorType::Rgba8 => {
-                let img = image::RgbaImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image Rgba8 image")?;
-                DynamicImage::ImageRgba8(img)
-            }
-            ColorType::La8 => {
-                let img = image::GrayAlphaImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image La8 image")?;
+            2 => {
+                let mut img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
                 DynamicImage::ImageLumaA8(img)
             }
-            _ => {
-                return Err("Unsupported image type");
-            }
-        };
-        Ok(img)
-    }
-}
-
-impl TryFrom<&SerialImageBuffer<u8>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: &SerialImageBuffer<u8>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data().clone();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
-
-        let img = match color {
-            ColorType::L8 => {
-                let img = image::GrayImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image L8 image")?;
-                DynamicImage::ImageLuma8(img)
-            }
-            ColorType::Rgb8 => {
-                let img = image::RgbImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image Rgb8 image")?;
+            3 => {
+                let mut img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
                 DynamicImage::ImageRgb8(img)
             }
-            ColorType::Rgba8 => {
-                let img = image::RgbaImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image Rgba8 image")?;
+            4 => {
+                let mut img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
                 DynamicImage::ImageRgba8(img)
             }
-            ColorType::La8 => {
-                let img = image::GrayAlphaImage::from_vec(width as u32, height as u32, imgdata)
-                    .ok_or("Could not create image La8 image")?;
-                DynamicImage::ImageLumaA8(img)
+            _ => panic!("Pixel elements not supported"),
+        }
+    }
+}
+
+impl Into<DynamicImage> for &SerialImageBuffer<u16> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let data = self.clone().into_vec();
+
+        match pixel_elems {
+            1 => {
+                let img = ImageBuffer::<image::Luma<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLuma16(img)
             }
-            _ => {
-                return Err("Unsupported image type");
+            2 => {
+                let img = ImageBuffer::<image::LumaA<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageLumaA16(img)
             }
-        };
-        Ok(img)
-    }
-}
-
-impl TryFrom<SerialImageBuffer<u16>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: SerialImageBuffer<u16>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
-
-        let img =
-            match color {
-                ColorType::L16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Luma<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_luma16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgb16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgb<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgb16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgba16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgba<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgba16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::La16 => {
-                    let mut img =
-                        DynamicImage::from(ImageBuffer::<image::LumaA<u16>, Vec<u16>>::new(
-                            width as u32,
-                            height as u32,
-                        ));
-                    let imgbuf = img
-                        .as_mut_luma_alpha16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                _ => {
-                    return Err("Unsupported image type");
-                }
-            };
-        Ok(img)
-    }
-}
-
-impl TryFrom<&SerialImageBuffer<u16>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: &SerialImageBuffer<u16>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data().clone();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
-
-        let img =
-            match color {
-                ColorType::L16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Luma<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_luma16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgb16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgb<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgb16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgba16 => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgba<u16>, Vec<u16>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgba16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::La16 => {
-                    let mut img =
-                        DynamicImage::from(ImageBuffer::<image::LumaA<u16>, Vec<u16>>::new(
-                            width as u32,
-                            height as u32,
-                        ));
-                    let imgbuf = img
-                        .as_mut_luma_alpha16()
-                        .ok_or("Could not create image L16 image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                _ => {
-                    return Err("Unsupported image type");
-                }
-            };
-        Ok(img)
-    }
-}
-
-impl TryFrom<SerialImageBuffer<f32>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: SerialImageBuffer<f32>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
-
-        let img =
-            match color {
-                ColorType::Rgb32F => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgb<f32>, Vec<f32>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgb32f()
-                        .ok_or("Could not create image Rgb32F image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgba32F => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgba<f32>, Vec<f32>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgba32f()
-                        .ok_or("Could not create image Rgba32F image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                _ => {
-                    return Err("Unsupported image type");
-                }
-            };
-        Ok(img)
-    }
-}
-
-impl TryFrom<&SerialImageBuffer<f32>> for DynamicImage {
-    type Error = &'static str;
-    fn try_from(value: &SerialImageBuffer<f32>) -> Result<DynamicImage, &'static str> {
-        let imgdata = value.get_data().clone();
-        let width = value.width();
-        let height = value.height();
-        let color = value.pixel().try_into()?;
-
-        let img =
-            match color {
-                ColorType::Rgb32F => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgb<f32>, Vec<f32>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgb32f()
-                        .ok_or("Could not create image Rgb32F image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                ColorType::Rgba32F => {
-                    let mut img = DynamicImage::from(
-                        ImageBuffer::<image::Rgba<f32>, Vec<f32>>::new(width as u32, height as u32),
-                    );
-                    let imgbuf = img
-                        .as_mut_rgba32f()
-                        .ok_or("Could not create image Rgba32F image")?;
-                    imgbuf.copy_from_slice(&imgdata);
-                    img
-                }
-                _ => {
-                    return Err("Unsupported image type");
-                }
-            };
-        Ok(img)
-    }
-}
-
-/// Dynamic serial image enumeration. This data type encapsulates the specific serial image data types.
-/// 
-/// The enumeration variants are [`DynamicSerialImage::U8`], [`DynamicSerialImage::U16`], [`DynamicSerialImage::F32`].
-/// 
-/// # Traits
-/// [`DynamicSerialImage`] implements the [`std::clone::Clone`], [`std::convert::From`], [`std::convert::TryFrom`], [`std::convert::Into`] and [`std::fmt::Debug`] traits.
-/// 
-/// Specifically, the following conversions are implemented:
-/// 
-/// With [`std::convert::From`]:
-///  * [`DynamicSerialImage`] <-> [`DynamicImage`]
-///  * [`DynamicSerialImage`] <- [`SerialImageData<u8>`]
-///  * [`DynamicSerialImage`] <- [`SerialImageData<u16>`]
-///  * [`DynamicSerialImage`] <- [`SerialImageData<f32>`]
-/// 
-/// With [`std::convert::TryFrom`]:
-///  * [`DynamicImage`] <-> [`SerialImageData<u8>`]
-///  * [`DynamicImage`] <-> [`SerialImageData<u16>`]
-///  * [`DynamicImage`] <-> [`SerialImageData<f32>`]
-///  
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum DynamicSerialImage {
-    /// 8-bit unsigned integer image data.
-    U8(SerialImageBuffer<u8>),
-    /// 16-bit unsigned integer image data.
-    U16(SerialImageBuffer<u16>),
-    /// 32-bit floating point image data.
-    F32(SerialImageBuffer<f32>),
-}
-
-impl DynamicSerialImage {
-    /// Get the image metadata.
-    pub fn get_metadata(&self) -> Option<&ImageMetaData> {
-        match self {
-            DynamicSerialImage::U8(value) => value.get_metadata(),
-            DynamicSerialImage::U16(value) => value.get_metadata(),
-            DynamicSerialImage::F32(value) => value.get_metadata(),
-        }
-    }
-
-    /// Get a mutable reference to the image metadata.
-    pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
-        match self {
-            DynamicSerialImage::U8(value) => value.get_mut_metadata(),
-            DynamicSerialImage::U16(value) => value.get_mut_metadata(),
-            DynamicSerialImage::F32(value) => value.get_mut_metadata(),
-        }
-    }
-
-    /// Update the image metadata.
-    pub fn set_metadata(&mut self, meta: ImageMetaData) {
-        match self {
-            DynamicSerialImage::U8(value) => value.set_metadata(meta),
-            DynamicSerialImage::U16(value) => value.set_metadata(meta),
-            DynamicSerialImage::F32(value) => value.set_metadata(meta),
-        }
-    }
-
-    /// Get image width.
-    pub fn width(&self) -> usize {
-        match self {
-            DynamicSerialImage::U8(value) => value.width(),
-            DynamicSerialImage::U16(value) => value.width(),
-            DynamicSerialImage::F32(value) => value.width(),
-        }
-    }
-
-    /// Get image height.
-    pub fn height(&self) -> usize {
-        match self {
-            DynamicSerialImage::U8(value) => value.height(),
-            DynamicSerialImage::U16(value) => value.height(),
-            DynamicSerialImage::F32(value) => value.height(),
-        }
-    }
-
-    /// Get the underlying SerialImageBuffer<u8> if the image is of type [`DynamicSerialImage::U8`].
-    pub fn as_u8(&self) -> Option<&SerialImageBuffer<u8>> {
-        match self {
-            DynamicSerialImage::U8(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    /// Get the underlying SerialImageBuffer<u16> if the image is of type [`DynamicSerialImage::U16`].
-    pub fn as_u16(&self) -> Option<&SerialImageBuffer<u16>> {
-        match self {
-            DynamicSerialImage::U16(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    /// Get the underlying SerialImageBuffer<f32> if the image is of type [`DynamicSerialImage::F32`].
-    pub fn as_f32(&self) -> Option<&SerialImageBuffer<f32>> {
-        match self {
-            DynamicSerialImage::F32(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl From<DynamicImage> for DynamicSerialImage {
-    fn from(value: DynamicImage) -> DynamicSerialImage {
-        let color = value.color();
-        match color {
-            ColorType::L8 | ColorType::Rgb8 | ColorType::Rgba8 | ColorType::La8 => {
-                DynamicSerialImage::U8(value.try_into().unwrap())
+            3 => {
+                let img = ImageBuffer::<image::Rgb<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgb16(img)
             }
-            ColorType::L16 | ColorType::Rgb16 | ColorType::Rgba16 | ColorType::La16 => {
-                DynamicSerialImage::U16(value.try_into().unwrap())
+            4 => {
+                let mut img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgba16(img)
             }
-            ColorType::Rgb32F | ColorType::Rgba32F => {
-                DynamicSerialImage::F32(value.try_into().unwrap())
-            }
-            _ => {
-                panic!("Unsupported image type");
-            }
+            _ => panic!("Pixel elements not supported"),
         }
     }
 }
 
-impl From<&DynamicImage> for DynamicSerialImage {
-    fn from(value: &DynamicImage) -> Self {
-        let color = value.color();
-        match color {
-            ColorType::L8 | ColorType::Rgb8 | ColorType::Rgba8 | ColorType::La8 => {
-                DynamicSerialImage::U8(value.try_into().unwrap())
+impl Into<DynamicImage> for &SerialImageBuffer<f32> {
+    fn into(self) -> DynamicImage {
+        let width = self.width;
+        let height = self.height;
+        let pixel_elems = self.data.pixel_elems;
+        let data = self.clone().into_vec();
+
+        match pixel_elems {
+            3 => {
+                let img = ImageBuffer::<image::Rgb<f32>, Vec<f32>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgb32F(img)
             }
-            ColorType::L16 | ColorType::Rgb16 | ColorType::Rgba16 | ColorType::La16 => {
-                DynamicSerialImage::U16(value.try_into().unwrap())
+            4 => {
+                let img = ImageBuffer::<image::Rgba<f32>, Vec<f32>>::from_raw(
+                    width as u32,
+                    height as u32,
+                    data,
+                )
+                .unwrap();
+                DynamicImage::ImageRgba32F(img)
             }
-            ColorType::Rgb32F | ColorType::Rgba32F => {
-                DynamicSerialImage::F32(value.try_into().unwrap())
-            }
-            _ => {
-                panic!("Unsupported image type");
-            }
+            _ => panic!("Pixel elements not supported"),
         }
     }
 }
 
-impl From<DynamicSerialImage> for DynamicImage {
-    fn from(value: DynamicSerialImage) -> Self {
-        match value {
-            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
-            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
-            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
-        }
-    }
-}
-
-impl From<&DynamicSerialImage> for DynamicImage {
-    fn from(value: &DynamicSerialImage) -> Self {
-        match value {
-            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
-            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
-            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
-        }
-    }
-}
-
-impl From<SerialImageBuffer<u8>> for DynamicSerialImage {
-    fn from(value: SerialImageBuffer<u8>) -> Self {
-        DynamicSerialImage::U8(value)
-    }
-}
-
-impl From<SerialImageBuffer<u16>> for DynamicSerialImage {
-    fn from(value: SerialImageBuffer<u16>) -> Self {
-        DynamicSerialImage::U16(value)
-    }
-}
-
-impl From<SerialImageBuffer<f32>> for DynamicSerialImage {
-    fn from(value: SerialImageBuffer<f32>) -> Self {
-        DynamicSerialImage::F32(value)
-    }
-}
-
-impl From<&SerialImageBuffer<u8>> for DynamicSerialImage {
-    fn from(value: &SerialImageBuffer<u8>) -> Self {
-        DynamicSerialImage::U8(value.clone())
-    }
-}
-
-impl From<&SerialImageBuffer<u16>> for DynamicSerialImage {
-    fn from(value: &SerialImageBuffer<u16>) -> Self {
-        DynamicSerialImage::U16(value.clone())
-    }
-}
-
-impl From<&SerialImageBuffer<f32>> for DynamicSerialImage {
-    fn from(value: &SerialImageBuffer<f32>) -> Self {
-        DynamicSerialImage::F32(value.clone())
-    }
-}
-
-impl TryInto<SerialImageBuffer<u8>> for DynamicSerialImage {
+impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<u8>, &'static str> {
-        match self {
-            DynamicSerialImage::U8(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+
+    fn try_into(self) -> Result<ImageBuffer<Luma<T>, Vec<T>>, Self::Error> {
+        if self.data.pixel_elems != 1 {
+            return Err("Image must have one element per pixel");
         }
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+        let img = ImageBuffer::<Luma<T>, Vec<T>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
     }
 }
 
-impl TryInto<SerialImageBuffer<u8>> for &DynamicSerialImage {
+impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for &SerialImageBuffer<T>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<u8>, &'static str> {
-        match self {
-            DynamicSerialImage::U8(value) => Ok(value.clone()),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+
+    fn try_into(self) -> Result<ImageBuffer<Luma<T>, Vec<T>>, Self::Error> {
+        if self.data.pixel_elems != 1 {
+            return Err("Image must have one element per pixel");
         }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Luma<T>, Vec<T>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.clone().unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
     }
 }
 
-impl TryInto<SerialImageBuffer<u16>> for DynamicSerialImage {
+impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<u16>, &'static str> {
-        match self {
-            DynamicSerialImage::U16(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+
+    fn try_into(self) -> Result<ImageBuffer<LumaA<T>, Vec<T>>, Self::Error> {
+        if self.data.pixel_elems != 2 {
+            return Err("Image must have two elements per pixel");
         }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<LumaA<T>, Vec<T>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
     }
 }
 
-impl TryInto<SerialImageBuffer<u16>> for &DynamicSerialImage {
+impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for &SerialImageBuffer<T>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<u16>, &'static str> {
-        match self {
-            DynamicSerialImage::U16(value) => Ok(value.clone()),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+
+    fn try_into(self) -> Result<ImageBuffer<LumaA<T>, Vec<T>>, Self::Error> {
+        if self.data.pixel_elems != 2 {
+            return Err("Image must have two elements per pixel");
         }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<LumaA<T>, Vec<T>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.clone().unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
     }
 }
 
-impl TryInto<SerialImageBuffer<f32>> for DynamicSerialImage {
+impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<f32>, &'static str> {
-        match self {
-            DynamicSerialImage::F32(value) => Ok(value),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u8>"),
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
         }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
     }
 }
 
-impl TryInto<SerialImageBuffer<f32>> for &DynamicSerialImage {
+impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for &SerialImageBuffer<u8>
+{
     type Error = &'static str;
-    fn try_into(self) -> Result<SerialImageBuffer<f32>, &'static str> {
-        match self {
-            DynamicSerialImage::F32(value) => Ok(value.clone()),
-            _ => Err("Could not convert DynamicSerialImage to SerialImageData<u16>"),
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
+        }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.clone().unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
+    }
+}
+
+impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
+{
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
+        }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<u16>, Vec<u16>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
+    }
+}
+
+impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for &SerialImageBuffer<u16>
+{
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
+        }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<u16>, Vec<u16>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.clone().unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
+    }
+}
+
+impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
+{
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<f32>, Vec<f32>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
+        }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<f32>, Vec<f32>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
+    }
+}
+
+impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for &SerialImageBuffer<f32>
+{
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<ImageBuffer<Rgb<f32>, Vec<f32>>, Self::Error> {
+        if self.data.pixel_elems != 3 {
+            return Err("Image must have three elements per pixel");
+        }
+
+        if self.width * self.height == 0 {
+            return Err("Image must have non-zero dimensions");
+        }
+
+        let img = ImageBuffer::<Rgb<f32>, Vec<f32>>::from_raw(
+            self.width as u32,
+            self.height as u32,
+            self.data.luma.clone().unwrap(),
+        );
+        if img.is_none() {
+            return Err("Failed to convert to image buffer");
+        }
+        Ok(img.unwrap())
+    }
+}
+
+impl <T: Primitive> From<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
+{
+    fn from(img: ImageBuffer<Luma<T>, Vec<T>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 1;
+        let data = img.into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
         }
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum SerialImageChannels {
-    Luma,
-    Red,
-    Green,
-    Blue,
-    Alpha,
+impl <T: Primitive> From<&ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
+{
+    fn from(img: &ImageBuffer<Luma<T>, Vec<T>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 1;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
 }
 
-// impl <T: SerialImageStorageTypes> SerialImageBuffer<T> {
-//     /// Get an immutable slice to a specific image data channel
-//     pub fn get_channel(&self, channel: SerialImageChannels) -> Option<&[T]>
-//     {
-//         match channel {
-//             SerialImageChannels::Luma => {
-//                 if self.has_channel(SerialImageChannels::Luma) {
-//                     Some(&self.imgdata[0..self.width * self.height])
-//                 } else {
-//                     None
-//                 }
-//             },
-//         }
-//     }
+impl <T: Primitive> From<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
+{
+    fn from(img: ImageBuffer<LumaA<T>, Vec<T>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 2;
+        let data = img.into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
 
-//     pub fn has_channel(&self, channel: SerialImageChannels) -> bool {
-//         let numpix = self.width * self.height;
-//         if channel == SerialImageChannels::Luma && (numpix != self.imgdata.len() && numpix != self.imgdata.len() * 2) {
-//             return false; // Luma channel does not exist for RGB or RGBA images
-//         }
-//         if channel == SerialImageChannels::Alpha && (numpix != self.imgdata.len() * 2 && numpix != self.imgdata.len() * 4) {
-//             return false; // Alpha channel does not exist for Luma or RGB images
-//         }
-//         if [SerialImageChannels::Red, SerialImageChannels::Green, SerialImageChannels::Blue].contains(&channel) && numpix < self.imgdata.len() / 3 {
-//             return false; // Color channel does not exist for Luma images
-//         }
-//         true
-//     }
-// }
+impl <T: Primitive> From<&ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
+{
+    fn from(img: &ImageBuffer<LumaA<T>, Vec<T>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 2;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
+{
+    fn from(img: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<&ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
+{
+    fn from(img: &ImageBuffer<Rgb<u8>, Vec<u8>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
+{
+    fn from(img: ImageBuffer<Rgb<u16>, Vec<u16>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<&ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
+{
+    fn from(img: &ImageBuffer<Rgb<u16>, Vec<u16>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
+{
+    fn from(img: ImageBuffer<Rgb<f32>, Vec<f32>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
+
+impl From<&ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
+{
+    fn from(img: &ImageBuffer<Rgb<f32>, Vec<f32>>) -> Self {
+        let width = img.width() as usize;
+        let height = img.height() as usize;
+        let pixel_elems = 3;
+        let data = img.clone().into_raw();
+        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        Self {
+            meta: None,
+            data: SerialImageInternal {
+                luma,
+                red,
+                green,
+                blue,
+                alpha,
+                pixel_elems,
+            },
+            width,
+            height,
+        }
+    }
+}
