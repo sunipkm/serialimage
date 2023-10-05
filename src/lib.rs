@@ -11,6 +11,7 @@ pub use imagemetadata::*;
 
 #[cfg(test)]
 mod tests {
+    #[cfg_attr(not(feature = "fitsio"), ignore)]
     #[cfg(feature = "fitsio")]
     use std::path::Path;
 
@@ -26,6 +27,7 @@ mod tests {
     fn test() {
         test_luma_u8();
         test_rgb_u8();
+        test_rgb_f32();
         test_readme();
     }
 
@@ -92,5 +94,31 @@ mod tests {
         #[cfg(feature = "fitsio")]
         img.savefits(Path::new("./") , "", None, false, true).unwrap();
         println!("xxxxxxxxxxxxxxxxxxxxxx");
+    }
+
+    fn test_rgb_f32() {
+        let mut rng = thread_rng();
+        let width = 10;
+        let height = 10;
+        let mut imgdata = Vec::<f32>::with_capacity(width as usize * height as usize * 3);
+        for _ in 0..width * height {
+            imgdata.push(rng.gen_range(0.0..=1.0));
+            imgdata.push(rng.gen_range(0.0..=1.0));
+            imgdata.push(rng.gen_range(0.0..=1.0));
+        }
+        let img = SerialImageBuffer::from_vec(width, height, imgdata).unwrap();
+        let img: DynamicSerialImage = img.into();
+        let val = serde_json::to_string(&img).unwrap();
+        println!("{}", val);
+        let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
+        assert_eq!(img, simg);
+        let dimg = DynamicImage::from(&simg);
+        assert_eq!(dimg.width(), width as u32);
+        let img = DynamicImage::from(simg);
+        assert_eq!(img.width(), width as u32);
+        let img = DynamicSerialImage::from(dimg);
+        assert_eq!(img.width(), width as usize);
+        #[cfg(feature = "fitsio")]
+        img.savefits(Path::new("./") , "", None, false, true).unwrap();
     }
 }
