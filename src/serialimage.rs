@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};

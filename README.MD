@@ -45,3 +45,5 @@ Add the following to your `Cargo.toml` to enable this:
 [dependencies]
 serialimage = { version = "2.0.0", features = ["fitsio"] }
 ```
+
+The FITS I/O is hidden behind a feature flag to avoid compilation errors on `wasm` targets.

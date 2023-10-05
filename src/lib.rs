@@ -1,4 +1,6 @@
 #![doc = document_features::document_features!()]
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
+
 mod dynamicserialimage;
 mod imagemetadata;
 mod serialimage;

@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-#![doc = document_features::document_features!()]
+
 #[cfg(feature = "fitsio")]
 use fitsio::errors::Error as FitsError;
 #[cfg(feature = "fitsio")]
