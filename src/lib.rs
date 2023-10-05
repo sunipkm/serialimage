@@ -2,25 +2,21 @@ mod dynamicserialimage;
 mod imagemetadata;
 mod serialimage;
 
-pub use serialimage::SerialImageBuffer;
+pub use serialimage::*;
 
-pub use image::Primitive;
+pub use dynamicserialimage::*;
 
-pub use dynamicserialimage::DynamicSerialImage;
-
-pub use imagemetadata::ImageMetaData;
-
-pub use image::DynamicImage;
+pub use imagemetadata::*;
 
 #[cfg(test)]
 mod tests {
-    use image::{DynamicImage, ImageBuffer, Luma};
+    use image::DynamicImage;
 
     use serde_json::{self};
 
     use rand::{thread_rng, Rng};
 
-    use crate::{DynamicSerialImage, ImageMetaData, SerialImageBuffer};
+    use crate::{DynamicSerialImage, SerialImageBuffer};
 
     #[test]
     fn test() {

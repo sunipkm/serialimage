@@ -1,23 +1,25 @@
-use image::{ColorType, DynamicImage, ImageBuffer, Pixel};
+#![warn(missing_docs)]
+use image::ColorType;
+pub use image::{DynamicImage, ImageFormat, ImageResult};
 use serde::{Deserialize, Serialize};
 
 use super::{ImageMetaData, SerialImageBuffer};
 
 /// Dynamic serial image enumeration. This data type encapsulates the specific serial image data types.
-/// 
+///
 /// The enumeration variants are [`DynamicSerialImage::U8`], [`DynamicSerialImage::U16`], [`DynamicSerialImage::F32`].
-/// 
+///
 /// # Traits
 /// [`DynamicSerialImage`] implements the [`std::clone::Clone`], [`std::convert::From`], [`std::convert::TryFrom`], [`std::convert::Into`] and [`std::fmt::Debug`] traits.
-/// 
+///
 /// Specifically, the following conversions are implemented:
-/// 
+///
 /// With [`std::convert::From`]:
 ///  * [`DynamicSerialImage`] <-> [`DynamicImage`]
 ///  * [`DynamicSerialImage`] <- [`SerialImageData<u8>`]
 ///  * [`DynamicSerialImage`] <- [`SerialImageData<u16>`]
 ///  * [`DynamicSerialImage`] <- [`SerialImageData<f32>`]
-/// 
+///
 /// With [`std::convert::TryFrom`]:
 ///  * [`DynamicImage`] <-> [`SerialImageData<u8>`]
 ///  * [`DynamicImage`] <-> [`SerialImageData<u16>`]
@@ -101,6 +103,15 @@ impl DynamicSerialImage {
             DynamicSerialImage::F32(value) => Some(value),
             _ => None,
         }
+    }
+
+    /// Saves the buffer to a file at the path specified.
+    ///
+    ///The image format is derived from the file extension.
+    /// See [`image::dynimage::save_buffer_with_format`] for supported types.
+    pub fn save(&self, path: &str) -> ImageResult<()> {
+        let img: DynamicImage = self.into();
+        img.save(path)
     }
 }
 

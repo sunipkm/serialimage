@@ -1,7 +1,8 @@
-use std::ops::Deref;
-
-use image::{ColorType, DynamicImage, ImageBuffer, Pixel, Luma, Primitive, LumaA, Rgb};
+#![warn(missing_docs)]
+use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
 use serde::{Deserialize, Serialize};
+
+pub use image::Primitive;
 
 use super::ImageMetaData;
 
@@ -18,6 +19,9 @@ struct SerialImageInternal<T: Primitive> {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+/// A serializable image data container for [`u8`], [`u16`] and [`f32`] pixel types.
+///
+/// Image data is organized in channels. For example, a grayscale image stores data in the luma channel, while a color image stores data in the red, green and blue channels. Transparency is stored in the alpha channel.
 pub struct SerialImageBuffer<T: Primitive> {
     meta: Option<ImageMetaData>,
     data: SerialImageInternal<T>,
@@ -26,10 +30,35 @@ pub struct SerialImageBuffer<T: Primitive> {
 }
 
 impl<T: Primitive> SerialImageBuffer<T> {
+    /// Create a new serializable image buffer from vector data.
+    ///
+    /// # Arguments
+    ///  - `width`: Image width.
+    ///  - `height`: Image height.
+    ///  - `data`: Image data.
+    ///
+    /// Note:
+    ///  - If `width * height == data.len()`, the image is assumed to be a grayscale image.
+    ///  - If `width * height * 2 == data.len()`, the image is assumed to be a grayscale image with alpha channel, with the odd pixels being the luma channel and the even pixels being the alpha channel.
+    ///  - If `width * height * 3 == data.len()`, the image is assumed to be a color image, with the first pixel in the red channel, the second pixel in the green channel, and the third pixel in the blue channel and so on.
+    ///  - If `width * height * 4 == data.len()`, the image is assumed to be a color image with alpha channel, with the first pixel in the red channel, the second pixel in the green channel, the third pixel in the blue channel and the fourth pixel in the alpha channel and so on.
+    ///
+    ///
+    /// # Errors
+    ///  - If `width * height == 0`.
+    ///  - If number of pixel elements is not in `[1..=4]`.
+    ///  - If the length of the channel data stored in the image is not equal to `width * height * pixel elements`. Number of pixel elements are inferred using the length of the data vector.
+    ///
     pub fn from_vec(width: usize, height: usize, data: Vec<T>) -> Result<Self, &'static str> {
+        if width * height == 0 {
+            return Err("Width and height must be greater than zero");
+        }
         let pixel_elems = data.len() / (width * height);
         if data.len() != width * height * pixel_elems {
             return Err("Data length must be equal to width * height * pixel elements");
+        }
+        if pixel_elems > 4 || pixel_elems == 0 {
+            return Err("Invalid number of pixel elements");
         }
 
         let (luma, red, green, blue, alpha) =
@@ -98,86 +127,106 @@ impl<T: Primitive> SerialImageBuffer<T> {
         }
     }
 
+    /// Get the image metadata.
     pub fn get_metadata(&self) -> Option<&ImageMetaData> {
         self.meta.as_ref()
     }
 
+    /// Get a mutable reference to the image metadata.
     pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
         self.meta.as_mut()
     }
 
+    /// Update the image metadata.
+    ///
+    /// # Arguments
+    ///  - `meta`: Image metadata.
     pub fn set_metadata(&mut self, meta: Option<ImageMetaData>) {
         self.meta = meta;
     }
 
+    /// Get the luminosity channel data.
     pub fn get_luma(&self) -> Option<&Vec<T>> {
         self.data.luma.as_ref()
     }
 
+    /// Get a mutable reference to the luminosity channel data.
     pub fn get_mut_luma(&mut self) -> Option<&mut Vec<T>> {
         self.data.luma.as_mut()
     }
 
+    /// Get the red channel data.
     pub fn get_red(&self) -> Option<&Vec<T>> {
         self.data.red.as_ref()
     }
 
+    /// Get a mutable reference to the red channel data.
     pub fn get_mut_red(&mut self) -> Option<&mut Vec<T>> {
         self.data.red.as_mut()
     }
 
+    /// Get the green channel data.
     pub fn get_green(&self) -> Option<&Vec<T>> {
         self.data.green.as_ref()
     }
 
+    /// Get a mutable reference to the green channel data.
     pub fn get_mut_green(&mut self) -> Option<&mut Vec<T>> {
         self.data.green.as_mut()
     }
 
+    /// Get the blue channel data.
     pub fn get_blue(&self) -> Option<&Vec<T>> {
         self.data.blue.as_ref()
     }
 
+    /// Get a mutable reference to the blue channel data.
     pub fn get_mut_blue(&mut self) -> Option<&mut Vec<T>> {
         self.data.blue.as_mut()
     }
 
+    /// Get the alpha channel data.
     pub fn get_alpha(&self) -> Option<&Vec<T>> {
         self.data.alpha.as_ref()
     }
 
+    /// Get a mutable reference to the alpha channel data.
     pub fn get_mut_alpha(&mut self) -> Option<&mut Vec<T>> {
         self.data.alpha.as_mut()
     }
 
+    /// Get image width.
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Get image height.
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Get the number of pixel elements.
     pub fn pixel_elems(&self) -> u8 {
         self.data.pixel_elems
     }
 
+    /// Check if the image is grayscale.
     pub fn is_luma(&self) -> bool {
         self.data.pixel_elems == 1
     }
 
-    pub fn is_luma_alpha(&self) -> bool {
-        self.data.pixel_elems == 2
-    }
-
+    /// Check if the image is RGB.
     pub fn is_rgb(&self) -> bool {
         self.data.pixel_elems == 3
     }
 
-    pub fn is_rgba(&self) -> bool {
-        self.data.pixel_elems == 4
-    }
-
+    /// Consume the image buffer and return a contiguous vector.
+    ///
+    /// Note:
+    ///  - If the image is grayscale, the vector contains the luma channel data.
+    ///  - If the image is grayscale with alpha channel, odd pixels are luminoisty and even pixels are alpha.
+    ///  - If the image is RGB, the first element of the vector is red, the second element is green and the third element is blue and so on.
+    ///  - If the image is RGB with alpha channel, the first element of the vector is red, the second element is green, the third element is blue and the fourth element is alpha and so on.
     pub fn into_vec(self) -> Vec<T> {
         let mut data =
             Vec::with_capacity(self.width * self.height * self.data.pixel_elems as usize);
@@ -222,6 +271,21 @@ impl<T: Primitive> SerialImageBuffer<T> {
 }
 
 impl SerialImageBuffer<u8> {
+    /// Create a new serializable image buffer.
+    ///
+    /// # Arguments
+    ///  - `meta`: Image metadata (optional).
+    ///  - `luma`: Luminosity data for a grayscale image. Set to `None` if it is a color image.
+    ///  - `red`: Red channel data. Set to `None` if it is a grayscale image.
+    ///  - `green`: Green channel data. Set to `None` if it is a grayscale image.
+    ///  - `blue`: Blue channel data. Set to `None` if it is a grayscale image.
+    ///  - `alpha`: Alpha channel data (optional).
+    ///
+    /// # Errors
+    ///  - If `width * height == 0`.
+    ///  - If all color channels are not specified.
+    ///  - If `luma` and color channels are specified at the same time.
+    ///  - If the length of the channel data stored in the image is not equal to `width * height`.
     pub fn new(
         meta: Option<ImageMetaData>,
         luma: Option<Vec<u8>>,
@@ -275,6 +339,21 @@ impl SerialImageBuffer<u8> {
 }
 
 impl SerialImageBuffer<u16> {
+    /// Create a new serializable image buffer.
+    ///
+    /// # Arguments
+    ///  - `meta`: Image metadata (optional).
+    ///  - `luma`: Luminosity data for a grayscale image. Set to `None` if it is a color image.
+    ///  - `red`: Red channel data. Set to `None` if it is a grayscale image.
+    ///  - `green`: Green channel data. Set to `None` if it is a grayscale image.
+    ///  - `blue`: Blue channel data. Set to `None` if it is a grayscale image.
+    ///  - `alpha`: Alpha channel data (optional).
+    ///
+    /// # Errors
+    ///  - If `width * height == 0`.
+    ///  - If all color channels are not specified.
+    ///  - If `luma` and color channels are specified at the same time.
+    ///  - If the length of the channel data stored in the image is not equal to `width * height`.
     pub fn new(
         meta: Option<ImageMetaData>,
         luma: Option<Vec<u16>>,
@@ -328,6 +407,18 @@ impl SerialImageBuffer<u16> {
 }
 
 impl SerialImageBuffer<f32> {
+    /// Create a new serializable image buffer.
+    ///
+    /// # Arguments
+    ///  - `meta`: Image metadata (optional).
+    ///  - `red`: Red channel data. Set to `None` if it is a grayscale image.
+    ///  - `green`: Green channel data. Set to `None` if it is a grayscale image.
+    ///  - `blue`: Blue channel data. Set to `None` if it is a grayscale image.
+    ///  - `alpha`: Alpha channel data (optional).
+    ///
+    /// # Errors
+    ///  - If `width * height == 0`.
+    ///  - If the length of the channel data stored in the image is not equal to `width * height`.
     pub fn new(
         meta: Option<ImageMetaData>,
         red: Vec<f32>,
@@ -337,6 +428,9 @@ impl SerialImageBuffer<f32> {
         width: usize,
         height: usize,
     ) -> Result<Self, &'static str> {
+        if width * height == 0 {
+            return Err("Width and height must be greater than zero");
+        }
         if red.len() != width * height {
             return Err("Length of red channel must be equal to width * height");
         }
@@ -519,7 +613,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u8> {
         let width = self.width;
         let height = self.height;
         let pixel_elems = self.data.pixel_elems;
-        let mut data = self.into_vec();
+        let data = self.into_vec();
 
         match pixel_elems {
             1 => {
@@ -532,7 +626,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u8> {
                 DynamicImage::ImageLuma8(img)
             }
             2 => {
-                let mut img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -541,7 +635,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u8> {
                 DynamicImage::ImageLumaA8(img)
             }
             3 => {
-                let mut img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -550,7 +644,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u8> {
                 DynamicImage::ImageRgb8(img)
             }
             4 => {
-                let mut img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -568,7 +662,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u16> {
         let width = self.width;
         let height = self.height;
         let pixel_elems = self.data.pixel_elems;
-        let mut data = self.into_vec();
+        let data = self.into_vec();
 
         match pixel_elems {
             1 => {
@@ -581,7 +675,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u16> {
                 DynamicImage::ImageLuma16(img)
             }
             2 => {
-                let mut img = ImageBuffer::<image::LumaA<u16>, Vec<u16>>::from_raw(
+                let img = ImageBuffer::<image::LumaA<u16>, Vec<u16>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -590,7 +684,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u16> {
                 DynamicImage::ImageLumaA16(img)
             }
             3 => {
-                let mut img = ImageBuffer::<image::Rgb<u16>, Vec<u16>>::from_raw(
+                let img = ImageBuffer::<image::Rgb<u16>, Vec<u16>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -599,7 +693,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u16> {
                 DynamicImage::ImageRgb16(img)
             }
             4 => {
-                let mut img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
+                let img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -617,11 +711,11 @@ impl Into<DynamicImage> for SerialImageBuffer<f32> {
         let width = self.width;
         let height = self.height;
         let pixel_elems = self.data.pixel_elems;
-        let mut data = self.into_vec();
+        let data = self.into_vec();
 
         match pixel_elems {
             3 => {
-                let mut img = ImageBuffer::<image::Rgb<f32>, Vec<f32>>::from_raw(
+                let img = ImageBuffer::<image::Rgb<f32>, Vec<f32>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -630,7 +724,7 @@ impl Into<DynamicImage> for SerialImageBuffer<f32> {
                 DynamicImage::ImageRgb32F(img)
             }
             4 => {
-                let mut img = ImageBuffer::<image::Rgba<f32>, Vec<f32>>::from_raw(
+                let img = ImageBuffer::<image::Rgba<f32>, Vec<f32>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -809,7 +903,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u8> {
                 DynamicImage::ImageLuma8(img)
             }
             2 => {
-                let mut img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::LumaA<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -818,7 +912,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u8> {
                 DynamicImage::ImageLumaA8(img)
             }
             3 => {
-                let mut img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -827,7 +921,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u8> {
                 DynamicImage::ImageRgb8(img)
             }
             4 => {
-                let mut img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                let img = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -876,7 +970,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u16> {
                 DynamicImage::ImageRgb16(img)
             }
             4 => {
-                let mut img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
+                let img = ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(
                     width as u32,
                     height as u32,
                     data,
@@ -920,8 +1014,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<f32> {
     }
 }
 
-impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Luma<T>, Vec<T>>, Self::Error> {
@@ -943,8 +1036,7 @@ impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<
     }
 }
 
-impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for &SerialImageBuffer<T>
-{
+impl<T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for &SerialImageBuffer<T> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Luma<T>, Vec<T>>, Self::Error> {
@@ -968,8 +1060,7 @@ impl <T: Primitive> TryInto<ImageBuffer<Luma<T>, Vec<T>>> for &SerialImageBuffer
     }
 }
 
-impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<LumaA<T>, Vec<T>>, Self::Error> {
@@ -993,8 +1084,7 @@ impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer
     }
 }
 
-impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for &SerialImageBuffer<T>
-{
+impl<T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for &SerialImageBuffer<T> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<LumaA<T>, Vec<T>>, Self::Error> {
@@ -1018,8 +1108,7 @@ impl <T: Primitive> TryInto<ImageBuffer<LumaA<T>, Vec<T>>> for &SerialImageBuffe
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
-{
+impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>, Self::Error> {
@@ -1043,8 +1132,7 @@ impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for &SerialImageBuffer<u8>
-{
+impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for &SerialImageBuffer<u8> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>, Self::Error> {
@@ -1068,8 +1156,7 @@ impl TryInto<ImageBuffer<Rgb<u8>, Vec<u8>>> for &SerialImageBuffer<u8>
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
-{
+impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Self::Error> {
@@ -1093,8 +1180,7 @@ impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for &SerialImageBuffer<u16>
-{
+impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for &SerialImageBuffer<u16> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Self::Error> {
@@ -1118,8 +1204,7 @@ impl TryInto<ImageBuffer<Rgb<u16>, Vec<u16>>> for &SerialImageBuffer<u16>
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
-{
+impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<f32>, Vec<f32>>, Self::Error> {
@@ -1143,8 +1228,7 @@ impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
     }
 }
 
-impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for &SerialImageBuffer<f32>
-{
+impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for &SerialImageBuffer<f32> {
     type Error = &'static str;
 
     fn try_into(self) -> Result<ImageBuffer<Rgb<f32>, Vec<f32>>, Self::Error> {
@@ -1168,14 +1252,14 @@ impl TryInto<ImageBuffer<Rgb<f32>, Vec<f32>>> for &SerialImageBuffer<f32>
     }
 }
 
-impl <T: Primitive> From<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> From<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T> {
     fn from(img: ImageBuffer<Luma<T>, Vec<T>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 1;
         let data = img.into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1192,14 +1276,14 @@ impl <T: Primitive> From<ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
     }
 }
 
-impl <T: Primitive> From<&ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> From<&ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T> {
     fn from(img: &ImageBuffer<Luma<T>, Vec<T>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 1;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1216,14 +1300,14 @@ impl <T: Primitive> From<&ImageBuffer<Luma<T>, Vec<T>>> for SerialImageBuffer<T>
     }
 }
 
-impl <T: Primitive> From<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> From<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T> {
     fn from(img: ImageBuffer<LumaA<T>, Vec<T>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 2;
         let data = img.into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1240,14 +1324,14 @@ impl <T: Primitive> From<ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
     }
 }
 
-impl <T: Primitive> From<&ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T>
-{
+impl<T: Primitive> From<&ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T> {
     fn from(img: &ImageBuffer<LumaA<T>, Vec<T>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 2;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1264,14 +1348,14 @@ impl <T: Primitive> From<&ImageBuffer<LumaA<T>, Vec<T>>> for SerialImageBuffer<T
     }
 }
 
-impl From<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
-{
+impl From<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8> {
     fn from(img: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1288,14 +1372,14 @@ impl From<ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
     }
 }
 
-impl From<&ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
-{
+impl From<&ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8> {
     fn from(img: &ImageBuffer<Rgb<u8>, Vec<u8>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1312,14 +1396,14 @@ impl From<&ImageBuffer<Rgb<u8>, Vec<u8>>> for SerialImageBuffer<u8>
     }
 }
 
-impl From<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
-{
+impl From<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16> {
     fn from(img: ImageBuffer<Rgb<u16>, Vec<u16>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1336,14 +1420,14 @@ impl From<ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
     }
 }
 
-impl From<&ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
-{
+impl From<&ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16> {
     fn from(img: &ImageBuffer<Rgb<u16>, Vec<u16>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1360,14 +1444,14 @@ impl From<&ImageBuffer<Rgb<u16>, Vec<u16>>> for SerialImageBuffer<u16>
     }
 }
 
-impl From<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
-{
+impl From<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32> {
     fn from(img: ImageBuffer<Rgb<f32>, Vec<f32>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
@@ -1384,14 +1468,14 @@ impl From<ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
     }
 }
 
-impl From<&ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32>
-{
+impl From<&ImageBuffer<Rgb<f32>, Vec<f32>>> for SerialImageBuffer<f32> {
     fn from(img: &ImageBuffer<Rgb<f32>, Vec<f32>>) -> Self {
         let width = img.width() as usize;
         let height = img.height() as usize;
         let pixel_elems = 3;
         let data = img.clone().into_raw();
-        let (luma, red, green, blue, alpha) = Self::from_vec_unsafe(width * height, data, pixel_elems);
+        let (luma, red, green, blue, alpha) =
+            Self::from_vec_unsafe(width * height, data, pixel_elems);
         Self {
             meta: None,
             data: SerialImageInternal {
