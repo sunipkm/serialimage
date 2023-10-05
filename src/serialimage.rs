@@ -128,13 +128,8 @@ impl<T: Primitive> SerialImageBuffer<T> {
     }
 
     /// Get the image metadata.
-    pub fn get_metadata(&self) -> Option<&ImageMetaData> {
-        self.meta.as_ref()
-    }
-
-    /// Get a mutable reference to the image metadata.
-    pub fn get_mut_metadata(&mut self) -> Option<&mut ImageMetaData> {
-        self.meta.as_mut()
+    pub fn get_metadata(&self) -> Option<ImageMetaData> {
+        self.meta.clone()
     }
 
     /// Update the image metadata.

@@ -1,6 +1,6 @@
 [package]
-name = "serialimage"
-version = "1.1.0"
+name = "serialimage" 
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
@@ -13,12 +13,27 @@ description = """
 Serialization for the [image](https://crates.io/crates/image) crate's DynamicImage type, with additional metadata.
 """
 exclude = [".github"]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+##! Optional feature: FITS Output 
+
+## The `fitsio` feature enables FITS output support for the [`DynamicSerialImage`] type, and requires the `fitsio` crate. 
+fitsio = ["dep:fitsio"]
 
 [dependencies]
 image = "0.24.7"
 serde = { version = "1.0.188", features = ["derive"] }
+document-features = { version = "0.2" }
+##! ### Optional dependencies 
+
+### Enable this feature to implement the trait for the types from the `fitsio` crate 
+fitsio = { version = "0.21.2", optional = true}
+
 
 [dev-dependencies]
 serde_json = { version = "1.0.107", features = ["raw_value"] }
 rand = "0.8.5"
+
+[package.metadata.docs.rs]
+features = ["document-features"]

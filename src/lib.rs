@@ -1,3 +1,4 @@
+#![doc = document_features::document_features!()]
 mod dynamicserialimage;
 mod imagemetadata;
 mod serialimage;
@@ -10,18 +11,22 @@ pub use imagemetadata::*;
 
 #[cfg(test)]
 mod tests {
-    use image::DynamicImage;
+    #[cfg(feature = "fitsio")]
+    use std::path::Path;
+
+    use image::{DynamicImage, ImageBuffer, Luma};
 
     use serde_json::{self};
 
     use rand::{thread_rng, Rng};
 
-    use crate::{DynamicSerialImage, SerialImageBuffer};
+    use crate::{DynamicSerialImage, SerialImageBuffer, ImageMetaData};
 
     #[test]
     fn test() {
         test_luma_u8();
         test_rgb_u8();
+        test_readme();
     }
 
     fn test_luma_u8() {
@@ -50,6 +55,16 @@ mod tests {
         print!("\n\n\n");
     }
 
+    fn test_readme() {
+        let meta = ImageMetaData::default();
+        let img = DynamicImage::from(ImageBuffer::<Luma<u16>, Vec<u16>>::new(10, 10)); // create DynamicImage
+        let mut img = DynamicSerialImage::from(img); // create DynamicSerialImage
+        img.set_metadata(meta); // set the metadata
+        let imgstr = serde_json::to_string(&img).unwrap(); // serialize
+        let simg: DynamicSerialImage = serde_json::from_str(&imgstr).unwrap(); // deserialize
+        assert_eq!(img, simg);
+    }
+
     fn test_rgb_u8() {
         println!("Test RGB u8");
         // 1. Generate vector of randoms
@@ -74,6 +89,8 @@ mod tests {
         assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
         assert_eq!(img.width(), width as usize);
+        #[cfg(feature = "fitsio")]
+        img.savefits(Path::new("./") , "", None, false, true).unwrap();
         println!("xxxxxxxxxxxxxxxxxxxxxx");
     }
 }
