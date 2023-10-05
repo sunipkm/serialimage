@@ -4,12 +4,15 @@
 mod dynamicserialimage;
 mod imagemetadata;
 mod serialimage;
+mod optimalexposure;
 
 pub use serialimage::*;
 
 pub use dynamicserialimage::*;
 
 pub use imagemetadata::*;
+
+pub use optimalexposure::*;
 
 #[cfg(test)]
 mod tests {
