@@ -14,6 +14,8 @@ mod tests {
 
     use serde_json::{self};
 
+    use rand::{Rng, thread_rng};
+
     use crate::{ImageMetaData, SerialImageBuffer, SerialImagePixel, DynamicSerialImage};
 
     #[test]

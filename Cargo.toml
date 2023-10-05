@@ -21,3 +21,4 @@ serde = { version = "1.0.188", features = ["derive"] }
 
 [dev-dependencies]
 serde_json = { version = "1.0.107", features = ["raw_value"] }
+rand = "0.8.5"

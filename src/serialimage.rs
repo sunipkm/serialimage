@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use image::{ColorType, DynamicImage, ImageBuffer};
+use image::{ColorType, DynamicImage, ImageBuffer, Luma};
 use serde::{Deserialize, Serialize};
 /// Valid types for the serial image data structure: [`u8`], [`u16`], [`f32`].
 pub trait SerialImageStorageTypes {}
@@ -1070,3 +1070,41 @@ impl TryInto<SerialImageBuffer<f32>> for &DynamicSerialImage {
     }
 }
 
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SerialImageChannels {
+    Luma,
+    Red,
+    Green,
+    Blue,
+    Alpha,
+}
+
+// impl <T: SerialImageStorageTypes> SerialImageBuffer<T> {
+//     /// Get an immutable slice to a specific image data channel
+//     pub fn get_channel(&self, channel: SerialImageChannels) -> Option<&[T]>
+//     {
+//         match channel {
+//             SerialImageChannels::Luma => {
+//                 if self.has_channel(SerialImageChannels::Luma) {
+//                     Some(&self.imgdata[0..self.width * self.height])
+//                 } else {
+//                     None
+//                 }
+//             },
+//         }
+//     }
+
+//     pub fn has_channel(&self, channel: SerialImageChannels) -> bool {
+//         let numpix = self.width * self.height;
+//         if channel == SerialImageChannels::Luma && (numpix != self.imgdata.len() && numpix != self.imgdata.len() * 2) {
+//             return false; // Luma channel does not exist for RGB or RGBA images
+//         }
+//         if channel == SerialImageChannels::Alpha && (numpix != self.imgdata.len() * 2 && numpix != self.imgdata.len() * 4) {
+//             return false; // Alpha channel does not exist for Luma or RGB images
+//         }
+//         if [SerialImageChannels::Red, SerialImageChannels::Green, SerialImageChannels::Blue].contains(&channel) && numpix < self.imgdata.len() / 3 {
+//             return false; // Color channel does not exist for Luma images
+//         }
+//         true
+//     }
+// }
