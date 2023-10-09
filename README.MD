@@ -11,7 +11,7 @@ Conversions between `image` and `serialimage` data types incur memory copy overh
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimage = "2.0.0"
+serialimage = "2.1.0"
 ```
 and the following to your source code:
 ```rs

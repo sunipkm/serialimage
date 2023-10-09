@@ -163,6 +163,69 @@ impl DynamicSerialImage {
     }
 }
 
+impl DynamicSerialImage {
+    /// Create a new image from a vector of [`u8`] pixels.
+    ///
+    /// # Arguments
+    ///  * `width` - The width of the image.
+    ///  * `height` - The height of the image.
+    ///  * `data` - The image data as a vector of [`u8`] pixels.
+    ///
+    /// # Errors
+    ///  - Error messages as strings.
+    ///
+    /// Note: The length of the vector must be `width * height * channels`.
+    ///  - For grayscale images, `channels` is 1.
+    ///  - For grayscale images with alpha channel, `channels` is 2.
+    ///  - For RGB images, `channels` is 3.
+    ///  - For RGBA images, `channels` is 4.
+    pub fn from_vec_u8(width: usize, height: usize, data: Vec<u8>) -> Result<Self, &'static str> {
+        Ok(DynamicSerialImage::U8(SerialImageBuffer::from_vec(
+            width, height, data,
+        )?))
+    }
+
+    /// Create a new image from a vector of [`u16`] pixels.
+    ///
+    /// # Arguments
+    ///  * `width` - The width of the image.
+    ///  * `height` - The height of the image.
+    ///  * `data` - The image data as a vector of [`u16`] pixels.
+    ///
+    /// # Errors
+    ///  - Error messages as strings.
+    ///
+    /// Note: The length of the vector must be `width * height * channels`.
+    ///  - For grayscale images, `channels` is 1.
+    ///  - For grayscale images with alpha channel, `channels` is 2.
+    ///  - For RGB images, `channels` is 3.
+    ///  - For RGBA images, `channels` is 4.
+    pub fn from_vec_u16(width: usize, height: usize, data: Vec<u16>) -> Result<Self, &'static str> {
+        Ok(DynamicSerialImage::U16(SerialImageBuffer::from_vec(
+            width, height, data,
+        )?))
+    }
+
+    /// Create a new image from a vector of [`f32`] pixels.
+    ///
+    /// # Arguments
+    /// * `width` - The width of the image.
+    /// * `height` - The height of the image.
+    /// * `data` - The image data as a vector of [`f32`] pixels.
+    ///
+    /// # Errors
+    ///  - Error messages as strings.
+    ///
+    /// Note: The length of the vector must be `width * height * channels`. Grayscale images are not supported.
+    ///  - For RGB images, `channels` is 3.
+    ///  - For RGBA images, `channels` is 4.
+    pub fn from_vec_f32(width: usize, height: usize, data: Vec<f32>) -> Result<Self, &'static str> {
+        Ok(DynamicSerialImage::F32(SerialImageBuffer::from_vec(
+            width, height, data,
+        )?))
+    }
+}
+
 impl From<DynamicImage> for DynamicSerialImage {
     fn from(value: DynamicImage) -> DynamicSerialImage {
         let color = value.color();
