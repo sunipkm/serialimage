@@ -43,7 +43,7 @@ Additionally, the `Serial` image types optionally support saving as FITS images 
 Add the following to your `Cargo.toml` to enable this:
 ```toml
 [dependencies]
-serialimage = { version = "2.0.0", features = ["fitsio"] }
+serialimage = { version = "3.0.0", features = ["fitsio"] }
 ```
 
 The FITS I/O is hidden behind a feature flag to avoid compilation errors on `wasm` targets.

@@ -1,6 +1,6 @@
 [package]
 name = "serialimage" 
-version = "2.1.0"
+version = "3.0.0"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
@@ -29,7 +29,7 @@ document-features = { version = "0.2" }
 #! ## Optional dependency: FITS Output
 
 ## The `fitsio` crate is required to enable the `fitsio` feature.
-fitsio = { version = "0.21.2", optional = true}
+fitsio = { version = "0.21.2", optional = true }
 once_cell = "1.18.0"
 
 [build-dependencies]

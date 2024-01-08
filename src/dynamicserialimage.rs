@@ -142,7 +142,7 @@ impl DynamicSerialImage {
     /// # Errors
     ///  * [`fitsio::errors::Error`] with the error description.
     pub fn savefits(
-        self,
+        &self,
         dir_prefix: &Path,
         file_prefix: &str,
         progname: Option<&str>,

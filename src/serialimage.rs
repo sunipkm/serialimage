@@ -296,7 +296,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
     /// # Errors
     ///  * [`fitsio::errors::Error`] with the error description.
     fn savefits_generic(
-        self,
+        &self,
         dir_prefix: &Path,
         file_prefix: &str,
         progname: Option<&str>,
@@ -311,17 +311,15 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
             )));
         }
         let meta = self.get_metadata();
-        let meta2 = meta.clone();
-
         let timestamp;
         let cameraname;
-        if let Some(meta) = meta {
-            timestamp = meta
+        if let Some(metadata) = &meta {
+            timestamp = metadata
                 .timestamp
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or(Duration::from_secs(0))
                 .as_millis();
-            cameraname = meta.camera_name.clone();
+            cameraname = metadata.camera_name.clone();
         } else {
             timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -411,7 +409,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
         hdu.write_key(&mut fptr, "PROGRAM", progname.unwrap_or("unknown"))?;
         hdu.write_key(&mut fptr, "CAMERA", cameraname.as_str())?;
         hdu.write_key(&mut fptr, "TIMESTAMP", timestamp as u64)?;
-        if let Some(meta) = meta2 {
+        if let Some(meta) = meta {
             hdu.write_key(&mut fptr, "CCDTEMP", meta.temperature)?;
             hdu.write_key(&mut fptr, "EXPOSURE_US", meta.exposure.as_micros() as u64)?;
             hdu.write_key(&mut fptr, "ORIGIN_X", meta.img_left)?;
@@ -568,7 +566,7 @@ impl SerialImageBuffer<u8> {
     /// # Errors
     ///  * [`fitsio::errors::Error`] with the error description.
     pub fn savefits(
-        self,
+        &self,
         dir_prefix: &Path,
         file_prefix: &str,
         progname: Option<&str>,
@@ -715,7 +713,7 @@ impl SerialImageBuffer<u16> {
     /// # Errors
     ///  * [`fitsio::errors::Error`] with the error description.
     pub fn savefits(
-        self,
+        &self,
         dir_prefix: &Path,
         file_prefix: &str,
         progname: Option<&str>,
@@ -858,7 +856,7 @@ impl SerialImageBuffer<f32> {
     /// # Errors
     ///  * [`fitsio::errors::Error`] with the error description.
     pub fn savefits(
-        self,
+        &self,
         dir_prefix: &Path,
         file_prefix: &str,
         progname: Option<&str>,
