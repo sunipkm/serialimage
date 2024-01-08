@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
 #[cfg(feature = "fitsio")]
@@ -129,6 +130,7 @@ impl DynamicSerialImage {
         img.save(path)
     }
 
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     #[cfg(feature = "fitsio")]
     /// Save the image data to a FITS file.
     ///

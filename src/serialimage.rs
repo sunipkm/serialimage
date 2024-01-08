@@ -281,6 +281,7 @@ impl<T: Primitive> SerialImageBuffer<T> {
     }
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
 #[cfg(feature = "fitsio")]
 impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
     /// Save the image data to a FITS file.
@@ -553,6 +554,7 @@ impl SerialImageBuffer<u8> {
         .unwrap()
     }
 
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     #[cfg(feature = "fitsio")]
     /// Save the image data to a FITS file.
     ///
@@ -700,6 +702,7 @@ impl SerialImageBuffer<u16> {
         .unwrap()
     }
 
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     #[cfg(feature = "fitsio")]
     /// Save the image data to a FITS file.
     ///
@@ -843,6 +846,7 @@ impl SerialImageBuffer<f32> {
         .unwrap()
     }
 
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     #[cfg(feature = "fitsio")]
     /// Save the image data to a FITS file.
     ///

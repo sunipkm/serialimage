@@ -24,7 +24,6 @@ fitsio = ["dep:fitsio"]
 [dependencies]
 image = "0.24.7"
 serde = { version = "1.0.188", features = ["derive"] }
-document-features = { version = "0.2" }
 
 #! ## Optional dependency: FITS Output
 
@@ -41,4 +40,7 @@ serde_json = { version = "1.0.107", features = ["raw_value"] }
 rand = "0.8.5"
 
 [package.metadata.docs.rs]
-features = ["document-features"]
+# document all features
+all-features = true
+# defines the configuration attribute `docsrs`
+rustdoc-args = ["--cfg", "docsrs"]
