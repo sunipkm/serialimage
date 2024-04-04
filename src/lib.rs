@@ -98,19 +98,17 @@ mod tests {
     }
 
     fn test_luma_u8() {
-        println!("Test Luma u8");
         // 1. Generate vector of randoms
         let mut rng = thread_rng();
         let width = 10;
         let height = 10;
-        let mut imgdata = Vec::<u8>::with_capacity(width as usize * height as usize);
+        let mut imgdata = Vec::<u8>::with_capacity(width * height);
         for _ in 0..width * height {
             imgdata.push(rng.gen_range(0..=255));
         }
         let img = SerialImageBuffer::from_vec(width, height, imgdata).unwrap();
         let img: DynamicSerialImage = img.into();
         let val = serde_json::to_string(&img).unwrap();
-        println!("{}", val);
         let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
         assert_eq!(img, simg);
         let dimg = DynamicImage::from(&simg);
@@ -118,8 +116,7 @@ mod tests {
         let img = DynamicImage::from(simg);
         assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
-        assert_eq!(img.width(), width as usize);
-        println!("xxxxxxxxxxxxxxxxxxxxxx");
+        assert_eq!(img.width(), width);
         print!("\n\n\n");
     }
 
@@ -134,12 +131,11 @@ mod tests {
     }
 
     fn test_rgb_u8() {
-        println!("Test RGB u8");
         // 1. Generate vector of randoms
         let mut rng = thread_rng();
         let width = 800;
         let height = 600;
-        let mut imgdata = Vec::<u8>::with_capacity(width as usize * height as usize * 3);
+        let mut imgdata = Vec::<u8>::with_capacity(width * height * 3);
         for _ in 0..width * height {
             imgdata.push(rng.gen_range(0..=255));
             imgdata.push(rng.gen_range(0..=255));
@@ -151,7 +147,6 @@ mod tests {
         img.savefits(Path::new("./"), "rgb_u8", None, false, true)
             .unwrap();
         let val = serde_json::to_string(&img).unwrap();
-        println!("{}", val);
         let simg: DynamicSerialImage = serde_json::from_str(&val).unwrap();
         assert_eq!(img, simg);
         let dimg = DynamicImage::from(&simg);
@@ -159,18 +154,17 @@ mod tests {
         let img = DynamicImage::from(simg);
         assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
-        assert_eq!(img.width(), width as usize);
+        assert_eq!(img.width(), width);
         #[cfg(feature = "fitsio")]
         img.savefits(Path::new("./"), "rgb_u8_deser", None, false, true)
             .unwrap();
-        println!("xxxxxxxxxxxxxxxxxxxxxx");
     }
 
     fn test_rgb_f32() {
         let mut rng = thread_rng();
         let width = 800;
         let height = 600;
-        let mut imgdata = Vec::<f32>::with_capacity(width as usize * height as usize * 3);
+        let mut imgdata = Vec::<f32>::with_capacity(width * height * 3);
         for _ in 0..width * height {
             imgdata.push(rng.gen_range(0.0..=1.0));
             imgdata.push(rng.gen_range(0.0..=1.0));
@@ -186,7 +180,7 @@ mod tests {
         let img = DynamicImage::from(simg);
         assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
-        assert_eq!(img.width(), width as usize);
+        assert_eq!(img.width(), width);
         #[cfg(feature = "fitsio")]
         img.savefits(Path::new("./"), "rgb_f32", None, false, true)
             .unwrap();
@@ -196,7 +190,7 @@ mod tests {
         let mut rng = thread_rng();
         let width = 800;
         let height = 600;
-        let mut imgdata = Vec::<u16>::with_capacity(width as usize * height as usize * 3);
+        let mut imgdata = Vec::<u16>::with_capacity(width * height * 3);
         for _ in 0..width * height {
             imgdata.push(rng.gen_range(0..=65535));
             imgdata.push(rng.gen_range(0..=65535));
@@ -216,8 +210,9 @@ mod tests {
         let img = DynamicImage::from(simg);
         assert_eq!(img.width(), width as u32);
         let img = DynamicSerialImage::from(dimg);
-        assert_eq!(img.width(), width as usize);
+        assert_eq!(img.width(), width);
         let img: DynamicSerialImage = img.into_luma().into();
+        let img = img.resize(1024, 1024, image::imageops::FilterType::Nearest);
         img.save("test_luma.png").unwrap();
         #[cfg(feature = "fitsio")]
         img.savefits(Path::new("./"), "luma_u16", None, false, true)

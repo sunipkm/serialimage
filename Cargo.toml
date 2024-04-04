@@ -1,6 +1,6 @@
 [package]
 name = "serialimage" 
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
@@ -15,7 +15,6 @@ Serialization for the [image](https://crates.io/crates/image) crate's DynamicIma
 exclude = [".github"]
 
 [features]
-default = []
 #! ## Optional feature: FITS Output 
 
 ## The `fitsio` feature enables FITS output support for the [`DynamicSerialImage`] and [`SerialImageBuffer`] types, and requires the `fitsio` crate. 

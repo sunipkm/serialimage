@@ -18,7 +18,7 @@ in memory layout.
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimage = "3.0.0"
+serialimage = "3.1.0"
 ```
 and the following to your source code:
 ```rust

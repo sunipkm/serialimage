@@ -1,6 +1,6 @@
 #![warn(missing_docs)]
 
-use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
+use image::{imageops::FilterType, DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
@@ -22,15 +22,26 @@ pub use image::Primitive;
 
 use super::ImageMetaData;
 
+/// Optional vector type alias.
+pub type OptionVec<T> = Option<Vec<T>>;
+/// Optional vector tuple type alias.
+pub type TupleOptionVec<T> = (
+    Option<Vec<T>>,
+    Option<Vec<T>>,
+    Option<Vec<T>>,
+    Option<Vec<T>>,
+    Option<Vec<T>>,
+);
+
 /// Valid types for the serial image data structure: [`u8`], [`u16`], [`f32`].
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct SerialImageInternal<T: Primitive> {
-    luma: Option<Vec<T>>,
-    red: Option<Vec<T>>,
-    green: Option<Vec<T>>,
-    blue: Option<Vec<T>>,
-    alpha: Option<Vec<T>>,
+    luma: OptionVec<T>,
+    red: OptionVec<T>,
+    green: OptionVec<T>,
+    blue: OptionVec<T>,
+    alpha: OptionVec<T>,
     pixel_elems: u8,
 }
 
@@ -95,19 +106,9 @@ impl<T: Primitive> SerialImageBuffer<T> {
         })
     }
 
-    fn from_vec_unsafe(
-        size: usize,
-        data: Vec<T>,
-        elems: u8,
-    ) -> (
-        Option<Vec<T>>,
-        Option<Vec<T>>,
-        Option<Vec<T>>,
-        Option<Vec<T>>,
-        Option<Vec<T>>,
-    ) {
+    fn from_vec_unsafe(size: usize, data: Vec<T>, elems: u8) -> TupleOptionVec<T> {
         if elems == 1 {
-            return (Some(data), None, None, None, None);
+            (Some(data), None, None, None, None)
         } else if elems == 2 {
             let mut luma = Vec::with_capacity(size);
             let mut alpha = Vec::with_capacity(size);
@@ -277,7 +278,7 @@ impl<T: Primitive> SerialImageBuffer<T> {
             panic!("Invalid number of elements");
         }
 
-        return data;
+        data
     }
 }
 
@@ -358,7 +359,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
         }
         let width = self.width();
         let height = self.height();
-        let imgsize = [height as usize, width as usize];
+        let imgsize = [height, width];
         let data_type = image_type;
 
         let img_desc = ImageDescription {
@@ -446,6 +447,7 @@ impl SerialImageBuffer<u8> {
     ///  - If all color channels are not specified.
     ///  - If `luma` and color channels are specified at the same time.
     ///  - If the length of the channel data stored in the image is not equal to `width * height`.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         meta: Option<ImageMetaData>,
         luma: Option<Vec<u8>>,
@@ -537,10 +539,11 @@ impl SerialImageBuffer<u8> {
     /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
     pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
         let img = self.into_luma();
-        let alpha = match self.data.alpha {
-            Some(ref x) => Some(x.iter().map(|x| ((*x as u16) << 8)).collect()),
-            None => None,
-        };
+        let alpha = self
+            .data
+            .alpha
+            .as_ref()
+            .map(|x| x.iter().map(|x| ((*x as u16) << 8)).collect());
         SerialImageBuffer::<u16>::new(
             img.meta,
             img.data.luma,
@@ -552,6 +555,19 @@ impl SerialImageBuffer<u8> {
             self.height,
         )
         .unwrap()
+    }
+
+    /// Resize this image using the specified filter algorithm.
+    /// Returns a new image. The image's aspect ratio is preserved.
+    /// The image is scaled to the maximum possible size that fits
+    /// within the bounds specified by `nwidth` and `nheight`.
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+        let meta = self.meta.clone();
+        let img: DynamicImage = self.into();
+        let img = img.resize(nwidth as u32, nheight as u32, filter);
+        let mut img: Self = img.try_into().unwrap();
+        img.set_metadata(meta);
+        img
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
@@ -602,6 +618,7 @@ impl SerialImageBuffer<u16> {
     ///  - If all color channels are not specified.
     ///  - If `luma` and color channels are specified at the same time.
     ///  - If the length of the channel data stored in the image is not equal to `width * height`.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         meta: Option<ImageMetaData>,
         luma: Option<Vec<u16>>,
@@ -700,6 +717,19 @@ impl SerialImageBuffer<u16> {
             self.height,
         )
         .unwrap()
+    }
+
+    /// Resize this image using the specified filter algorithm.
+    /// Returns a new image. The image's aspect ratio is preserved.
+    /// The image is scaled to the maximum possible size that fits
+    /// within the bounds specified by `nwidth` and `nheight`.
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+        let meta = self.meta.clone();
+        let img: DynamicImage = self.into();
+        let img = img.resize(nwidth as u32, nheight as u32, filter);
+        let mut img: Self = img.try_into().unwrap();
+        img.set_metadata(meta);
+        img
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
@@ -825,14 +855,9 @@ impl SerialImageBuffer<f32> {
     /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
     pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
         let img = self.into_luma();
-        let alpha = match self.data.alpha {
-            Some(ref x) => Some(
-                x.iter()
+        let alpha = self.data.alpha.as_ref().map(|x| x.iter()
                     .map(|x| (*x * u16::MAX as f32).round() as u16)
-                    .collect(),
-            ),
-            None => None,
-        };
+                    .collect());
         SerialImageBuffer::<u16>::new(
             img.meta,
             img.data.luma,
@@ -844,6 +869,19 @@ impl SerialImageBuffer<f32> {
             self.height,
         )
         .unwrap()
+    }
+
+    /// Resize this image using the specified filter algorithm.
+    /// Returns a new image. The image's aspect ratio is preserved.
+    /// The image is scaled to the maximum possible size that fits
+    /// within the bounds specified by `nwidth` and `nheight`.
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+        let meta = self.meta.clone();
+        let img: DynamicImage = self.into();
+        let img = img.resize(nwidth as u32, nheight as u32, filter);
+        let mut img: Self = img.try_into().unwrap();
+        img.set_metadata(meta);
+        img
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
@@ -925,8 +963,8 @@ impl TryFrom<DynamicImage> for SerialImageBuffer<u8> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
@@ -978,8 +1016,8 @@ impl TryFrom<DynamicImage> for SerialImageBuffer<u16> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
@@ -1020,12 +1058,13 @@ impl TryFrom<DynamicImage> for SerialImageBuffer<f32> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for SerialImageBuffer<u8> {
     fn into(self) -> DynamicImage {
         let width = self.width;
@@ -1075,6 +1114,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u8> {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for SerialImageBuffer<u16> {
     fn into(self) -> DynamicImage {
         let width = self.width;
@@ -1124,6 +1164,7 @@ impl Into<DynamicImage> for SerialImageBuffer<u16> {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for SerialImageBuffer<f32> {
     fn into(self) -> DynamicImage {
         let width = self.width;
@@ -1202,8 +1243,8 @@ impl TryFrom<&DynamicImage> for SerialImageBuffer<u8> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
@@ -1255,8 +1296,8 @@ impl TryFrom<&DynamicImage> for SerialImageBuffer<u16> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
@@ -1297,12 +1338,13 @@ impl TryFrom<&DynamicImage> for SerialImageBuffer<f32> {
                 alpha,
                 pixel_elems,
             },
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
         })
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for &SerialImageBuffer<u8> {
     fn into(self) -> DynamicImage {
         let width = self.width;
@@ -1352,6 +1394,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u8> {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for &SerialImageBuffer<u16> {
     fn into(self) -> DynamicImage {
         let width = self.width;
@@ -1401,6 +1444,7 @@ impl Into<DynamicImage> for &SerialImageBuffer<u16> {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<DynamicImage> for &SerialImageBuffer<f32> {
     fn into(self) -> DynamicImage {
         let width = self.width;

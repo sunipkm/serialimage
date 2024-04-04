@@ -40,6 +40,7 @@ pub struct ImageMetaData {
 
 impl ImageMetaData {
     /// Create a new image metadata structure.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         timestamp: SystemTime,
         exposure: Duration,
@@ -66,6 +67,7 @@ impl ImageMetaData {
     }
 
     /// Create a new image metadata structure with full parameters.
+    #[allow(clippy::too_many_arguments)]
     pub fn full_builder(
         bin_x: u32,
         bin_y: u32,
@@ -140,10 +142,10 @@ impl Display for ImageMetaData {
             self.offset,
             self.temperature
         )?;
-        if self.extended_metadata.len() > 0 {
-            write!(f, "\tExtended Metadata:\n")?;
+        if !self.extended_metadata.is_empty() {
+            writeln!(f, "\tExtended Metadata:")?;
             for obj in self.extended_metadata.iter() {
-                write!(f, "\t\t{}: {}\n", obj.0, obj.1)?;
+                writeln!(f, "\t\t{}: {}", obj.0, obj.1)?;
             }
         };
         Ok(())

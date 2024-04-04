@@ -82,15 +82,15 @@ impl OptimumExposureConfig {
         let max_allowed_bin = self.max_allowed_bin;
         let pixel_exclusion = self.pixel_exclusion;
 
-        if pixel_tgt < 1.6e-5f32 || pixel_tgt > 1f32 {
+        if !(1.6e-5f32..=1f32).contains(&pixel_tgt) {
             return Err("Target pixel value must be between 1.6e-5 and 1");
         }
 
-        if pixel_uncertainty < 1.6e-5f32 || pixel_uncertainty > 1f32 {
+        if !(1.6e-5f32..=1f32).contains(&pixel_uncertainty) {
             return Err("Pixel uncertainty must be between 1.6e-5 and 1");
         }
 
-        if percentile_pix < 0f32 || percentile_pix > 1f32 {
+        if !(0f32..=1f32).contains(&percentile_pix) {
             return Err("Percentile must be between 0 and 1");
         }
 
@@ -118,7 +118,7 @@ impl OptimumExposureConfig {
         img.sort();
         let mut coord: usize;
         if percentile_pix > 0.99999 {
-            coord = img.len() - 1 as usize;
+            coord = img.len() - 1_usize;
         } else {
             coord = (percentile_pix * (img.len() - 1) as f32).floor() as usize;
         }
@@ -129,7 +129,7 @@ impl OptimumExposureConfig {
         let val = imgvec.get(coord);
         let val = match val {
             Some(v) => *v as f64,
-            None => 1e-5 as f64,
+            None => 1e-5_f64,
         };
 
         if (pixel_tgt as f64 - val).abs() < pixel_uncertainty as f64 {
@@ -145,7 +145,7 @@ impl OptimumExposureConfig {
         };
 
         target_exposure = Duration::from_secs_f64(
-            (pixel_tgt as f64 * exposure.as_micros() as f64 * 1e-6 / val as f64).abs(),
+            (pixel_tgt as f64 * exposure.as_micros() as f64 * 1e-6 / val).abs(),
         );
 
         if change_bin {

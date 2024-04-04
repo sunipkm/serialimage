@@ -6,7 +6,7 @@ use fitsio::errors::Error as FitsError;
 #[cfg(feature = "fitsio")]
 use std::path::{Path, PathBuf};
 
-use image::{ColorType, DynamicImage};
+use image::{imageops::FilterType, ColorType, DynamicImage};
 pub use image::{ImageFormat, ImageResult};
 use serde::{Deserialize, Serialize};
 
@@ -118,6 +118,18 @@ impl DynamicSerialImage {
             DynamicSerialImage::U8(value) => value.into_luma_alpha(),
             DynamicSerialImage::U16(value) => value.into_luma_alpha(),
             DynamicSerialImage::F32(value) => value.into_luma_alpha(),
+        }
+    }
+
+    /// Resize this image using the specified filter algorithm.
+    /// Returns a new image. The image's aspect ratio is preserved.
+    /// The image is scaled to the maximum possible size that fits
+    /// within the bounds specified by `nwidth` and `nheight`.
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType) -> Self {
+        match self {
+            DynamicSerialImage::U8(value) => DynamicSerialImage::U8(value.resize(nwidth, nheight, filter)),
+            DynamicSerialImage::U16(value) => DynamicSerialImage::U16(value.resize(nwidth, nheight, filter)),
+            DynamicSerialImage::F32(value) => DynamicSerialImage::F32(value.resize(nwidth, nheight, filter)),
         }
     }
 
@@ -271,9 +283,9 @@ impl From<&DynamicImage> for DynamicSerialImage {
 impl From<DynamicSerialImage> for DynamicImage {
     fn from(value: DynamicSerialImage) -> Self {
         match value {
-            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
-            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
-            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
+            DynamicSerialImage::U8(value) => value.into(),
+            DynamicSerialImage::U16(value) => value.into(),
+            DynamicSerialImage::F32(value) => value.into(),
         }
     }
 }
@@ -281,9 +293,9 @@ impl From<DynamicSerialImage> for DynamicImage {
 impl From<&DynamicSerialImage> for DynamicImage {
     fn from(value: &DynamicSerialImage) -> Self {
         match value {
-            DynamicSerialImage::U8(value) => value.try_into().unwrap(),
-            DynamicSerialImage::U16(value) => value.try_into().unwrap(),
-            DynamicSerialImage::F32(value) => value.try_into().unwrap(),
+            DynamicSerialImage::U8(value) => value.into(),
+            DynamicSerialImage::U16(value) => value.into(),
+            DynamicSerialImage::F32(value) => value.into(),
         }
     }
 }
