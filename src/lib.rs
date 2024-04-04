@@ -22,17 +22,17 @@ Add the following to your `Cargo.toml`:
 serialimage = "3.0.0"
 ```
 and the following to your source code:
-```no_run
+```ignore
 use serialimage::{DynamicSerialImage, ImageMetaData};
 ```
 
 Then, you can create a new image metadata object:
-```no_run
+```ignore
 let meta = ImageMetaData::new(...);
 ```
 
 Then, a `DynamicSerialImage` can be created from a `DynamicImage`. For example, with a `DynamicImage` from a `Luma<u16>` pixel type image buffer,
-```no_run
+```ignore
 let img = DynamicImage::from(ImageBuffer::<Luma<u16>, Vec<u16>>::new(10, 10)); // create DynamicImage
 let mut img = DynamicSerialImage::from(img); // create DynamicSerialImage
 img.set_metadata(meta); // set the metadata

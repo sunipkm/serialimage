@@ -1,9 +1,159 @@
 #![warn(missing_docs)]
 use std::time::Duration;
 
+#[derive(Debug, Clone, PartialEq)]
+/// Builder for the [`serialimage::OptimumExposure`] calculator.
+///
+/// The default values are:
+/// * `percentile_pix` - 0.995
+/// * `pixel_tgt` - 40000. / 65536.
+/// * `pixel_uncertainty` - 5000. / 65536.
+/// * `pixel_exclusion` - 100
+/// * `min_allowed_exp` - 1 ms
+/// * `max_allowed_exp` - 10 s
+/// * `max_allowed_bin` - 1
+pub struct OptimumExposureBuilder {
+    percentile_pix: f32,
+    pixel_tgt: f32,
+    pixel_uncertainty: f32,
+    pixel_exclusion: u32,
+    min_allowed_exp: Duration,
+    max_allowed_exp: Duration,
+    max_allowed_bin: u16,
+}
+
+impl Default for OptimumExposureBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OptimumExposureBuilder {
+    fn new() -> Self {
+        Self {
+            percentile_pix: 0.995,
+            pixel_tgt: 40000. / 65536.,
+            pixel_uncertainty: 5000. / 65536.,
+            pixel_exclusion: 100,
+            min_allowed_exp: Duration::from_millis(1),
+            max_allowed_exp: Duration::from_secs(10),
+            max_allowed_bin: 1,
+        }
+    }
+
+    /// Set the percentile of the pixel values to use as the target pixel value.
+    ///
+    /// The pixels are sorted in ascending order and the pixel at the percentile
+    /// is targeted for optimization.
+    pub fn percentile_pix(mut self, percentile_pix: f32) -> Self {
+        self.percentile_pix = percentile_pix;
+        self
+    }
+
+    /// Set the target pixel value.
+    ///
+    /// The target pixel value is the value that the algorithm will try to reach.
+    pub fn pixel_tgt(mut self, pixel_tgt: f32) -> Self {
+        self.pixel_tgt = pixel_tgt;
+        self
+    }
+
+    /// Set the uncertainty of the target pixel value.
+    ///
+    /// The pixel value is considered to be within the target if it is within the
+    /// target value plus or minus the uncertainty.
+    pub fn pixel_uncertainty(mut self, pixel_uncertainty: f32) -> Self {
+        self.pixel_uncertainty = pixel_uncertainty;
+        self
+    }
+
+    /// Set the number of pixels to exclude from the top of the image.
+    ///
+    /// The pixels are sorted in ascending order and the top `pixel_exclusion` pixels
+    /// are excluded from the optimization.
+    pub fn pixel_exclusion(mut self, pixel_exclusion: u32) -> Self {
+        self.pixel_exclusion = pixel_exclusion;
+        self
+    }
+
+    /// Set the minimum allowed exposure time.
+    ///
+    /// The minimum allowed exposure time is the shortest exposure time that the
+    /// algorithm will consider.
+    pub fn min_allowed_exp(mut self, min_allowed_exp: Duration) -> Self {
+        self.min_allowed_exp = min_allowed_exp;
+        self
+    }
+
+    /// Set the maximum allowed exposure time.
+    ///
+    /// The maximum allowed exposure time is the longest exposure time that the
+    /// algorithm will consider.
+    pub fn max_allowed_exp(mut self, max_allowed_exp: Duration) -> Self {
+        self.max_allowed_exp = max_allowed_exp;
+        self
+    }
+
+    /// Set the maximum allowed binning.
+    ///
+    /// The maximum allowed binning is the largest binning factor that the algorithm
+    /// will consider to minimize the exposure time.
+    pub fn max_allowed_bin(mut self, max_allowed_bin: u16) -> Self {
+        self.max_allowed_bin = max_allowed_bin;
+        self
+    }
+
+    /// Build the [`serialimage::OptimumExposure`].
+    pub fn build(self) -> Result<OptimumExposure, &'static str> {
+        if !(1.6e-5f32..=1f32).contains(&self.pixel_tgt) {
+            return Err("Target pixel value must be between 1.6e-5 and 1");
+        }
+
+        if !(1.6e-5f32..=1f32).contains(&self.pixel_uncertainty) {
+            return Err("Pixel uncertainty must be between 1.6e-5 and 1");
+        }
+
+        if self.percentile_pix < 0f32 || self.percentile_pix > 1f32 {
+            return Err("Percentile must be between 0 and 1.");
+        }
+
+        if self.min_allowed_exp >= self.max_allowed_exp {
+            return Err("Minimum allowed exposure must be less than maximum allowed exposure");
+        }
+
+        if self.pixel_exclusion > 65536 {
+            return Err("Pixel exclusion must be less than 65536");
+        }
+
+        if self.max_allowed_bin > 32 {
+            return Err("Maximum allowed binning must be less than 32");
+        }
+
+        Ok(OptimumExposure {
+            percentile_pix: self.percentile_pix,
+            pixel_tgt: self.pixel_tgt,
+            pixel_uncertainty: self.pixel_uncertainty,
+            pixel_exclusion: self.pixel_exclusion,
+            min_allowed_exp: self.min_allowed_exp,
+            max_allowed_exp: self.max_allowed_exp,
+            max_allowed_bin: self.max_allowed_bin,
+        })
+    }
+}
 /// Configuration used to find the optimum exposure.
-#[derive(Debug, Clone, Copy)]
-pub struct OptimumExposureConfig {
+///
+///
+/// # Options
+///  * `percentile_pix` - The percentile of the pixel values to use as the target pixel value, in fraction.
+///  * `pixel_tgt` - The target pixel value, in fraction.
+///  * `pixel_tol` - The uncertainty of the target pixel value, in fraction.
+///  * `pixel_exclusion` - The number of pixels to exclude from the top of the image.
+///  * `min_exposure` - The minimum allowed exposure time.
+///  * `max_exposure` - The maximum allowed exposure time.
+///  * `max_bin` - The maximum allowed binning.
+///
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OptimumExposure {
     percentile_pix: f32,
     pixel_tgt: f32,
     pixel_uncertainty: f32,
@@ -13,44 +163,7 @@ pub struct OptimumExposureConfig {
     pixel_exclusion: u32,
 }
 
-impl OptimumExposureConfig {
-    /// Create a new configuration.
-    ///
-    /// # Arguments
-    ///  * `percentile_pix` - The percentile of the pixel values to use as the target pixel value, in fraction.
-    ///  * `pixel_tgt` - The target pixel value, in fraction.
-    ///  * `pixel_tol` - The uncertainty of the target pixel value, in fraction.
-    ///  * `pixel_exclusion` - The number of pixels to exclude from the top of the image.
-    ///  * `min_exposure` - The minimum allowed exposure time.
-    ///  * `max_exposure` - The maximum allowed exposure time.
-    ///  * `max_bin` - The maximum allowed binning.
-    ///
-    /// # Returns
-    ///  * `Some(OptimumExposureConfig)` - The configuration.
-    ///  * `None` - The configuration is invalid.
-    pub fn new(
-        percentile_pix: f32,
-        pixel_tgt: f32,
-        pixel_tol: f32,
-        pixel_exclusion: u32,
-        min_exopsure: Duration,
-        max_exposure: Duration,
-        max_bin: u16,
-    ) -> Option<Self> {
-        if min_exopsure >= max_exposure {
-            return None;
-        }
-        Some(Self {
-            percentile_pix,
-            pixel_tgt,
-            pixel_uncertainty: pixel_tol,
-            min_allowed_exp: min_exopsure,
-            max_allowed_exp: max_exposure,
-            max_allowed_bin: max_bin,
-            pixel_exclusion,
-        })
-    }
-
+impl OptimumExposure {
     /// Find the optimum exposure time and binning to reach a target pixel value.
     /// The algorithm does not use any hysteresis and uses simple scaling.
     ///
@@ -58,13 +171,13 @@ impl OptimumExposureConfig {
     ///  * `mut img` - The image luminance data as a vector of u16 that is consumed.
     ///  * `exposure` - The exposure duration used to obtain this image luminance data.
     ///  * `bin` - The binning used to obtain this image luminance data.
-    /// 
+    ///
     /// # Returns
     ///  * `Ok((Duration, u16))` - The optimum exposure time and binning.
     ///
     /// # Errors
     ///  - Errors are returned as static string slices.
-    pub fn find_optimum_exposure(
+    pub fn calculate(
         &self,
         mut img: Vec<u16>,
         exposure: Duration,
@@ -182,5 +295,41 @@ impl OptimumExposureConfig {
         }
 
         Ok((target_exposure, bin))
+    }
+
+    /// Retrieve the builder for the [`serialimage::OptimumExposure`] calculator.
+    /// This is useful for changing the configuration of the calculator.
+    pub fn get_builder(&self) -> OptimumExposureBuilder {
+        OptimumExposureBuilder {
+            percentile_pix: self.percentile_pix,
+            pixel_tgt: self.pixel_tgt,
+            pixel_uncertainty: self.pixel_uncertainty,
+            pixel_exclusion: self.pixel_exclusion,
+            min_allowed_exp: self.min_allowed_exp,
+            max_allowed_exp: self.max_allowed_exp,
+            max_allowed_bin: self.max_allowed_bin,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_optimum_exposure() {
+        let opt_exp = OptimumExposureBuilder::default()
+            .pixel_exclusion(1)
+            .build()
+            .unwrap();
+        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let exp = Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = opt_exp.calculate(img, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
+        assert_eq!(
+            opt_exp.get_builder(),
+            OptimumExposureBuilder::default().pixel_exclusion(1)
+        );
     }
 }
