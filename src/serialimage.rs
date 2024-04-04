@@ -1,6 +1,5 @@
 #![warn(missing_docs)]
 
-use chrono::DateTime;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -18,6 +17,8 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+#[cfg(feature = "fitsio")]
+use chrono::DateTime;
 
 pub use image::Primitive;
 
