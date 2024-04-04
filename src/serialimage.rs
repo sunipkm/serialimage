@@ -1,5 +1,6 @@
 #![warn(missing_docs)]
 
+use chrono::DateTime;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -329,6 +330,13 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
                 .as_millis();
             cameraname = "unknown".to_owned();
         }
+        let ts = timestamp as u64;
+        // Create a NaiveDateTime from the timestamp
+        let timestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
+            FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
+        )?;
+
+        let timestamp = timestamp.format("%Y%m%d_%H%M%S");
 
         let file_prefix = if file_prefix.trim().is_empty() {
             cameraname.clone()
@@ -336,10 +344,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
             file_prefix.to_owned()
         };
 
-        let fpath = dir_prefix.join(Path::new(&format!(
-            "{}_{}.fits",
-            file_prefix, timestamp as u64
-        )));
+        let fpath = dir_prefix.join(Path::new(&format!("{}_{}.fits", file_prefix, timestamp)));
 
         if fpath.exists() {
             if !overwrite {
@@ -370,11 +375,11 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
         let path = Path::new(dir_prefix).join(Path::new(&format!(
             "{}_{}.fits{}",
             file_prefix,
-            timestamp as u64,
+            timestamp,
             if compress { "[compress]" } else { "" }
         )));
 
-        let mut fptr = FitsFile::create(path.clone()).open()?;
+        let mut fptr = FitsFile::create(path).open()?;
 
         let hdu = {
             {
@@ -410,7 +415,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
 
         hdu.write_key(&mut fptr, "PROGRAM", progname.unwrap_or("unknown"))?;
         hdu.write_key(&mut fptr, "CAMERA", cameraname.as_str())?;
-        hdu.write_key(&mut fptr, "TIMESTAMP", timestamp as u64)?;
+        hdu.write_key(&mut fptr, "TIMESTAMP", ts)?;
         if let Some(meta) = meta {
             hdu.write_key(&mut fptr, "CCDTEMP", meta.temperature)?;
             hdu.write_key(&mut fptr, "EXPOSURE_US", meta.exposure.as_micros() as u64)?;
@@ -427,7 +432,7 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
             }
         }
 
-        Ok(path)
+        Ok(fpath)
     }
 }
 
@@ -561,7 +566,7 @@ impl SerialImageBuffer<u8> {
     /// Returns a new image. The image's aspect ratio is preserved.
     /// The image is scaled to the maximum possible size that fits
     /// within the bounds specified by `nwidth` and `nheight`.
-    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType) -> Self {
         let meta = self.meta.clone();
         let img: DynamicImage = self.into();
         let img = img.resize(nwidth as u32, nheight as u32, filter);
@@ -723,7 +728,7 @@ impl SerialImageBuffer<u16> {
     /// Returns a new image. The image's aspect ratio is preserved.
     /// The image is scaled to the maximum possible size that fits
     /// within the bounds specified by `nwidth` and `nheight`.
-    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType) -> Self {
         let meta = self.meta.clone();
         let img: DynamicImage = self.into();
         let img = img.resize(nwidth as u32, nheight as u32, filter);
@@ -855,9 +860,11 @@ impl SerialImageBuffer<f32> {
     /// Convert the image to grayscale, while preserving the alpha channel. The transformation used is `0.2162 * red + 0.7152 * green + 0.0722 * blue` for converting RGB to grayscale (see [here](https://stackoverflow.com/a/56678483)).
     pub fn into_luma_alpha(&self) -> SerialImageBuffer<u16> {
         let img = self.into_luma();
-        let alpha = self.data.alpha.as_ref().map(|x| x.iter()
-                    .map(|x| (*x * u16::MAX as f32).round() as u16)
-                    .collect());
+        let alpha = self.data.alpha.as_ref().map(|x| {
+            x.iter()
+                .map(|x| (*x * u16::MAX as f32).round() as u16)
+                .collect()
+        });
         SerialImageBuffer::<u16>::new(
             img.meta,
             img.data.luma,
@@ -875,7 +882,7 @@ impl SerialImageBuffer<f32> {
     /// Returns a new image. The image's aspect ratio is preserved.
     /// The image is scaled to the maximum possible size that fits
     /// within the bounds specified by `nwidth` and `nheight`.
-    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType ) -> Self {
+    pub fn resize(self, nwidth: usize, nheight: usize, filter: FilterType) -> Self {
         let meta = self.meta.clone();
         let img: DynamicImage = self.into();
         let img = img.resize(nwidth as u32, nheight as u32, filter);
