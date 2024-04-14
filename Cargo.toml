@@ -1,6 +1,6 @@
 [package]
 name = "serialimage" 
-version = "4.0.0"
+version = "4.1.0"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
@@ -21,23 +21,23 @@ exclude = [".github"]
 fitsio = ["dep:fitsio"]
 
 [dependencies]
-image = "0.24.7"
-serde = { version = "1.0.188", features = ["derive"] }
+image = "0.25"
+serde = { version = "1.0", features = ["derive"] }
 chrono = "0.4"
 
 #! ## Optional dependency: FITS Output
 
 ## The `fitsio` crate is required to enable the `fitsio` feature.
-fitsio = { version = "0.21.2", optional = true }
-once_cell = "1.18.0"
+fitsio = { version = "0.21", optional = true }
+once_cell = "1.18"
 
 [build-dependencies]
-rustc_version = "0.4.0"
+rustc_version = "0.4"
 
 
 [dev-dependencies]
-serde_json = { version = "1.0.107", features = ["raw_value"] }
-rand = "0.8.5"
+serde_json = { version = "1.0", features = ["raw_value"] }
+rand = "0.8"
 
 [package.metadata.docs.rs]
 # document all features
