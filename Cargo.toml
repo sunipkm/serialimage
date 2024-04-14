@@ -1,6 +1,6 @@
 [package]
 name = "serialimage" 
-version = "4.1.0"
+version = "4.1.1"
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]

@@ -18,7 +18,7 @@ in memory layout.
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimage = "3.1.0"
+serialimage = "4.1"
 ```
 and the following to your source code:
 ```rust
@@ -54,7 +54,7 @@ feature flag can be enabled to allow for FITS image storage.
 Add the following to your `Cargo.toml` to enable this:
 ```toml
 [dependencies]
-serialimage = { version = "3.0.0", features = ["fitsio"] }
+serialimage = { version = "4.1", features = ["fitsio"] }
 ```
 
 The FITS I/O is hidden behind a feature flag to avoid compilation errors on `wasm` targets.

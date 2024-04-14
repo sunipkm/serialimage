@@ -5,6 +5,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "fitsio")]
+use chrono::DateTime;
+#[cfg(feature = "fitsio")]
 use fitsio::{
     errors::Error as FitsError,
     images::{ImageDescription, ImageType, WriteImage},
@@ -17,8 +19,6 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-#[cfg(feature = "fitsio")]
-use chrono::DateTime;
 
 pub use image::Primitive;
 
@@ -380,50 +380,45 @@ impl<T: Primitive + WriteImage> SerialImageBuffer<T> {
             if compress { "[compress]" } else { "" }
         )));
 
-        let mut fptr = FitsFile::create(path).open()?;
-
-        let hdu = {
-            {
-                let primary = if self.is_luma() { "LUMINANCE" } else { "RED" };
-                let hdu = fptr.create_image(primary, &img_desc)?;
-                let channels;
-                if self.is_luma() {
-                    hdu.write_image(&mut fptr, self.get_luma().unwrap())?;
-                    hdu.write_key(&mut fptr, "CHANNELS", 1)?;
-                    channels = 1;
-                } else if self.is_rgb() {
-                    hdu.write_image(&mut fptr, self.get_red().unwrap())?;
-                    let ghdu = fptr.create_image("GREEN", &img_desc)?;
-                    ghdu.write_image(&mut fptr, self.get_green().unwrap())?;
-                    let bhdu = fptr.create_image("BLUE", &img_desc)?;
-                    bhdu.write_image(&mut fptr, self.get_blue().unwrap())?;
-                    hdu.write_key(&mut fptr, "CHANNELS", 3)?;
-                    channels = 3;
-                } else {
-                    return Err(FitsError::Message(format!(
-                        "Unsupported image type {:?}",
-                        data_type
-                    )));
-                }
-                if let Some(alpha) = self.get_alpha() {
-                    let ahdu = fptr.create_image("ALPHA", &img_desc)?;
-                    ahdu.write_image(&mut fptr, alpha)?;
-                    hdu.write_key(&mut fptr, "CHANNELS", channels + 1)?;
-                }
-                hdu
-            }
-        };
+        let mut fptr = FitsFile::create(path)
+            .with_custom_primary(&img_desc)
+            .open()?;
+        let hdu = fptr.primary_hdu()?;
+        let channels;
+        if self.is_luma() {
+            hdu.write_image(&mut fptr, self.get_luma().unwrap())?;
+            hdu.write_key(&mut fptr, "CHANNELS", 1)?;
+            channels = 1;
+        } else if self.is_rgb() {
+            hdu.write_image(&mut fptr, self.get_red().unwrap())?;
+            let ghdu = fptr.create_image("GREEN", &img_desc)?;
+            ghdu.write_image(&mut fptr, self.get_green().unwrap())?;
+            let bhdu = fptr.create_image("BLUE", &img_desc)?;
+            bhdu.write_image(&mut fptr, self.get_blue().unwrap())?;
+            hdu.write_key(&mut fptr, "CHANNELS", 3)?;
+            channels = 3;
+        } else {
+            return Err(FitsError::Message(format!(
+                "Unsupported image type {:?}",
+                data_type
+            )));
+        }
+        if let Some(alpha) = self.get_alpha() {
+            let ahdu = fptr.create_image("ALPHA", &img_desc)?;
+            ahdu.write_image(&mut fptr, alpha)?;
+            hdu.write_key(&mut fptr, "CHANNELS", channels + 1)?;
+        }
 
         hdu.write_key(&mut fptr, "PROGRAM", progname.unwrap_or("unknown"))?;
         hdu.write_key(&mut fptr, "CAMERA", cameraname.as_str())?;
         hdu.write_key(&mut fptr, "TIMESTAMP", ts)?;
         if let Some(meta) = meta {
-            hdu.write_key(&mut fptr, "CCDTEMP", meta.temperature)?;
+            hdu.write_key(&mut fptr, "TEMPERATURE", meta.temperature)?;
             hdu.write_key(&mut fptr, "EXPOSURE_US", meta.exposure.as_micros() as u64)?;
             hdu.write_key(&mut fptr, "ORIGIN_X", meta.img_left)?;
             hdu.write_key(&mut fptr, "ORIGIN_Y", meta.img_top)?;
-            hdu.write_key(&mut fptr, "BINX", meta.bin_x)?;
-            hdu.write_key(&mut fptr, "BINY", meta.bin_y)?;
+            hdu.write_key(&mut fptr, "BIN_X", meta.bin_x)?;
+            hdu.write_key(&mut fptr, "BIN_Y", meta.bin_y)?;
             hdu.write_key(&mut fptr, "GAIN", meta.gain)?;
             hdu.write_key(&mut fptr, "OFFSET", meta.offset)?;
             hdu.write_key(&mut fptr, "GAIN_MIN", meta.min_gain)?;
