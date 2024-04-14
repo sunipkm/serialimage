@@ -19,7 +19,7 @@ count is > 1, i.e. the images are RGB or contain transparency data due to the di
 Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
-serialimage = "3.0.0"
+serialimage = "4.1"
 ```
 and the following to your source code:
 ```ignore
